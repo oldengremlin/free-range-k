@@ -69,7 +69,7 @@ ${CSS.trimIndent()}
             // Overall panel: PNG + text summary
             appendLine("<div class=\"panel active\">")
             appendLine("<img src=\"${escapeHtml(r.overallPng)}\" alt=\"${escapeHtml(r.hostLabel)}\">")
-            appendLine("<pre>${buildSummaryText(r.overallVlanResult)}</pre>")
+            appendLine("<pre>${buildSummaryHtml(r.overallVlanResult)}</pre>")
             appendLine("</div>")
 
             // Per-interface panels: PNG only
@@ -93,10 +93,47 @@ ${JS.trimIndent()}
         )
     }
 
-    private fun buildSummaryText(result: VlanProcessor.VlanResult): String {
-        val ranges = TextOutput.buildCombinedRanges(result.statuses, false)
-        val counts = VlanStatus.entries.joinToString(", ") { s -> "${s.code}=${result.counts[s] ?: 0}" }
-        return escapeHtml("$ranges\nTotal: $counts")
+    private fun buildSummaryHtml(result: VlanProcessor.VlanResult): String = buildString {
+        val statuses = result.statuses
+        val sorted = statuses.keys.sorted()
+        if (sorted.isEmpty()) return ""
+
+        val parts = mutableListOf<String>()
+        var rangeStart = sorted[0]
+        var rangeEnd = rangeStart
+        var curStatus = statuses[rangeStart]!!
+
+        fun flush(s: Int, e: Int, st: VlanStatus) {
+            val range = if (s == e) "$s" else "$s-$e"
+            parts.add("<span style=\"color:${colorForStatus(st)}\">$range(${st.code})</span>")
+        }
+
+        for (idx in 1 until sorted.size) {
+            val vlan = sorted[idx]
+            val st = statuses[vlan]!!
+            if (vlan == rangeEnd + 1 && st == curStatus) {
+                rangeEnd = vlan
+            } else {
+                flush(rangeStart, rangeEnd, curStatus)
+                rangeStart = vlan; rangeEnd = vlan; curStatus = st
+            }
+        }
+        flush(rangeStart, rangeEnd, curStatus)
+
+        append(parts.joinToString(","))
+        append("\nTotal: ")
+        append(VlanStatus.entries.joinToString(", ") { s ->
+            "<span style=\"color:${colorForStatus(s)}\">${s.code}=${result.counts[s] ?: 0}</span>"
+        })
+    }
+
+    private fun colorForStatus(status: VlanStatus): String = when (status) {
+        VlanStatus.FREE       -> "#33dd66"
+        VlanStatus.BUSY       -> "#ffcc00"
+        VlanStatus.ERROR      -> "#ff5555"
+        VlanStatus.CONFIGURED -> "#dd55ff"
+        VlanStatus.ANOTHER    -> "#4499ff"
+        VlanStatus.UNUSED     -> "#888888"
     }
 
     private fun escapeHtml(s: String) = s
@@ -123,7 +160,7 @@ ${JS.trimIndent()}
         img { max-width: 100%; display: block; }
         pre {
             margin-top: 10px; padding: 8px; background: #1a1a1a; color: #ccc;
-            font-size: 0.78em; overflow-x: auto; white-space: pre-wrap; line-height: 1.4;
+            font-size: 1em; overflow-x: auto; white-space: pre-wrap; line-height: 1.5;
         }
     """
 
