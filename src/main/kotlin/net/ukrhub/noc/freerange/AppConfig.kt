@@ -107,7 +107,7 @@ data class AppConfig(
                 ?: "subsystem-netconf"
 
             return AppConfig(
-                host = System.getenv("FREE_RANGE_HOST") ?: host,
+                host = host,
                 username = username,
                 password = password,
                 port = port,
