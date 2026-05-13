@@ -53,6 +53,7 @@ ${CSS.trimIndent()}
             val active = if (ri == 0) " active" else ""
             appendLine("<div class=\"panel$active\">")
 
+            // Text summary above the tabs
             appendLine("<pre>${buildSummaryHtml(r.overallVlanResult)}</pre>")
 
             // Inner tab bar
