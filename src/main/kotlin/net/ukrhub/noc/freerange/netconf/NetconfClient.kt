@@ -7,6 +7,7 @@ import com.jcraft.jsch.Session
 import org.apache.logging.log4j.LogManager
 import org.w3c.dom.Document
 import org.w3c.dom.Element
+import org.w3c.dom.Node
 import org.w3c.dom.NodeList
 import java.io.InputStream
 import java.io.OutputStream
@@ -129,11 +130,11 @@ class NetconfClient(
         return builder.parse(xml.byteInputStream())
     }
 
-    fun xpath(doc: Document, expression: String): NodeList {
+    fun xpath(node: Node, expression: String): NodeList {
         val xpathFactory = XPathFactory.newInstance()
         val xpath = xpathFactory.newXPath()
         val compiled = xpath.compile(expression)
-        return compiled.evaluate(doc, XPathConstants.NODESET) as NodeList
+        return compiled.evaluate(node, XPathConstants.NODESET) as NodeList
     }
 
     private fun send(data: String) {
@@ -177,15 +178,12 @@ class NetconfClient(
     )
 
     /**
-     * Parses VLAN data from the interfaces config document.
+     * Parses VLAN data from the interfaces config document using direct XPath queries.
      *
-     * Maps directly to the three Ruby CLI commands:
-     * - command_ranges: matches "dynamic-profile ... ranges START END" lines
-     *   → XML: interface/unit/dynamic-profile/ranges (with low/high children or text)
-     * - command_demux:  matches "unit N ... unnumbered-address" lines
-     *   → XML: interface/unit[unnumbered-address]
-     * - command_another: matches "vlan-id N" lines
-     *   → XML: interface/unit/vlan-id
+     * Mirrors the three Ruby CLI commands:
+     *   command_ranges  → .//auto-configure//dynamic-profile//ranges/name
+     *   command_demux   → .//unit[.//unnumbered-address]/name
+     *   command_another → .//unit[vlan-id]/vlan-id
      */
     fun parseInterfaceVlanData(doc: Document): InterfaceVlanData {
         val rangesMap = mutableMapOf<String, MutableList<IntRange>>()
@@ -202,50 +200,36 @@ class NetconfClient(
 
         for (i in 0 until interfaces.length) {
             val iface = interfaces.item(i) as? Element ?: continue
-            val ifaceName = iface.getElementsByTagName("name").item(0)?.textContent?.trim() ?: continue
+            val ifaceName = xpath(iface, "name").item(0)?.textContent?.trim() ?: continue
 
-            val ifaceRangeList = mutableListOf<IntRange>()
-
-            // command_ranges: interface/auto-configure/vlan-ranges/dynamic-profile/ranges/<name>
-            // The range text (e.g. "3200-4000") lives in the <name> child of each <ranges> element,
-            // which itself is nested under auto-configure (NOT under unit/dynamic-profile).
-            val autoConfigNodes = iface.getElementsByTagName("auto-configure")
-            for (j in 0 until autoConfigNodes.length) {
-                val ac = autoConfigNodes.item(j) as? Element ?: continue
-                val rangesNodes = ac.getElementsByTagName("ranges")
-                for (k in 0 until rangesNodes.length) {
-                    val rangesElem = rangesNodes.item(k) as? Element ?: continue
-                    val nameText = rangesElem.getElementsByTagName("name").item(0)?.textContent?.trim()
-                    if (!nameText.isNullOrEmpty()) {
-                        parseVlanRange(nameText)?.let { ifaceRangeList.add(it) }
-                    }
-                }
-            }
-
-            // command_demux + command_another: iterate units
-            val units = iface.getElementsByTagName("unit")
-            for (j in 0 until units.length) {
-                val unit = units.item(j) as? Element ?: continue
-                val unitNum = unit.getElementsByTagName("name").item(0)?.textContent?.trim()?.toIntOrNull()
-                    ?: continue
-                if (unitNum <= 0) continue
-
-                // command_demux: units with unnumbered-address (any depth)
-                if (unit.getElementsByTagName("unnumbered-address").length > 0) {
-                    demuxMap.getOrPut(ifaceName) { mutableListOf() }.add(unitNum)
-                }
-
-                // command_another: units with explicit vlan-id (direct child of unit)
-                val vlanIdElem = unit.getElementsByTagName("vlan-id").item(0)
-                val vlanId = vlanIdElem?.textContent?.trim()?.toIntOrNull()
-                if (vlanId != null && vlanId > 0) {
-                    anotherMap.getOrPut(ifaceName) { mutableListOf() }.add(vlanId)
-                }
-            }
+            // command_ranges: auto-configure/vlan-ranges/dynamic-profile/ranges/<name>
+            // Range text ("3200-4000") is in the <name> child of each <ranges> element.
+            val rangeNameNodes = xpath(iface, ".//auto-configure//dynamic-profile//ranges/name")
+            val ifaceRangeList = (0 until rangeNameNodes.length)
+                .mapNotNull { parseVlanRange(rangeNameNodes.item(it).textContent.trim()) }
+                .toMutableList()
 
             if (ifaceRangeList.isNotEmpty()) {
                 rangesMap[ifaceName] = ifaceRangeList
-                if (!interfacesWithRanges.contains(ifaceName)) interfacesWithRanges.add(ifaceName)
+                interfacesWithRanges.add(ifaceName)
+            }
+
+            // command_demux: unit number of every unit that has unnumbered-address anywhere below
+            val demuxUnitNames = xpath(iface, ".//unit[.//unnumbered-address]/name")
+            for (j in 0 until demuxUnitNames.length) {
+                val unitNum = demuxUnitNames.item(j).textContent.trim().toIntOrNull()
+                if (unitNum != null && unitNum > 0) {
+                    demuxMap.getOrPut(ifaceName) { mutableListOf() }.add(unitNum)
+                }
+            }
+
+            // command_another: vlan-id value of every unit that has a direct vlan-id child
+            val vlanIdNodes = xpath(iface, ".//unit[vlan-id]/vlan-id")
+            for (j in 0 until vlanIdNodes.length) {
+                val vlanId = vlanIdNodes.item(j).textContent.trim().toIntOrNull()
+                if (vlanId != null && vlanId > 0) {
+                    anotherMap.getOrPut(ifaceName) { mutableListOf() }.add(vlanId)
+                }
             }
         }
 
