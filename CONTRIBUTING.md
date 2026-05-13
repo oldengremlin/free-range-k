@@ -9,6 +9,7 @@
 | JDK | 21+ (перевірено на 21, 24, 25) |
 | Gradle | не потрібен — `./gradlew` (wrapper) завантажує сам |
 | Kotlin | 2.1.x (завантажується Gradle автоматично) |
+| Docker | будь-яка актуальна версія (опційно) |
 
 Перевірити:
 ```bash
@@ -41,33 +42,39 @@ free-range-k/
 ├── build.gradle.kts              головний build-скрипт
 ├── settings.gradle.kts           назва проекту
 ├── gradle/wrapper/               Gradle wrapper (комітити!)
-├── src/
-│   └── main/
-│       ├── kotlin/net/ukrhub/noc/freerange/
-│       │   ├── Main.kt           точка входу, picocli-команда
-│       │   ├── AppConfig.kt      конфігурація (CLI > ENV > YAML > default)
-│       │   ├── netconf/
-│       │   │   └── NetconfClient.kt   JSch + NETCONF 1.0, XPath-парсинг
-│       │   ├── subscribers/
-│       │   │   ├── SubscriberSource.kt            інтерфейс
-│       │   │   └── LocalCommandSubscriberSource.kt реалізація через shell
-│       │   ├── vlan/
-│       │   │   ├── VlanStatus.kt      enum статусів
-│       │   │   └── VlanProcessor.kt   логіка розподілу VLAN
-│       │   └── output/
-│       │       ├── TextOutput.kt      combined ranges + ANSI
-│       │       ├── TableOutput.kt     ASCII 41×100 таблиця
-│       │       └── PngOutput.kt       Java AWT PNG
-│       └── resources/
-│           └── log4j2.xml        конфігурація логування
-└── README.md
+├── Dockerfile                    3-stage build: JDK → JRE → nginx
+├── bin/
+│   └── free-range.sh             цикл оновлення (while true; sleep 3600)
+├── docker-entrypoint.d/
+│   └── 40-free-range.sh          запуск колектора через nginx entrypoint
+└── src/
+    └── main/
+        ├── kotlin/net/ukrhub/noc/freerange/
+        │   ├── Main.kt           точка входу, picocli-команда
+        │   ├── AppConfig.kt      конфігурація (CLI > ENV > YAML > default)
+        │   ├── netconf/
+        │   │   └── NetconfClient.kt      JSch + NETCONF 1.0, XPath-парсинг
+        │   ├── subscribers/
+        │   │   ├── SubscriberSource.kt              інтерфейс
+        │   │   ├── MssqlSubscriberSource.kt         JDBC → MS SQL (jTDS)
+        │   │   └── LocalCommandSubscriberSource.kt  shell-команда (fallback)
+        │   ├── vlan/
+        │   │   ├── VlanStatus.kt      enum статусів
+        │   │   └── VlanProcessor.kt   логіка розподілу VLAN
+        │   └── output/
+        │       ├── TextOutput.kt      combined ranges + ANSI
+        │       ├── TableOutput.kt     ASCII 41×100 таблиця
+        │       ├── PngOutput.kt       Java AWT PNG
+        │       └── WebOutput.kt       HTML-дашборд із табами
+        └── resources/
+            └── log4j2.xml        конфігурація логування
 ```
 
 ## Збірка і запуск
 
 ```bash
 # Компіляція + fat JAR (за один крок)
-./gradlew build
+./gradlew jar
 # → build/libs/free-range-1.0.0.jar
 
 # Запуск (для розробки)
@@ -83,9 +90,34 @@ java -jar build/libs/free-range-1.0.0.jar router.example.com -u admin -p secret
 ./gradlew tasks
 ```
 
-## Як додати нове джерело абонентів (REST API приклад)
+## Docker
 
-Поточна реалізація через shell-команду легко замінюється завдяки інтерфейсу `SubscriberSource`:
+```bash
+# Збірка образу
+docker build -t free-range .
+
+# Запуск із MSSQL-джерелом
+docker run -d --name vlan \
+  -e FREE_RANGE_HOST=r1,r2,r3 \
+  -e FREE_RANGE_SUFFIX=ukrhub.net \
+  -e FREE_RANGE_USERNAME=admin \
+  -e FREE_RANGE_PASSWORD=secret \
+  -e FREE_RANGE_TABLE_PNG=/usr/share/nginx/html \
+  -e FREE_RANGE_WEB=1 \
+  -e FREE_RANGE_ACC_SERVER=10.100.1.59 \
+  -e FREE_RANGE_ACC_USER=nocc \
+  -e FREE_RANGE_ACC_PASSWORD=secret \
+  -p 8080:80 \
+  free-range
+```
+
+3-stage Dockerfile: `eclipse-temurin:21-jdk` (Gradle-збірка) → `eclipse-temurin:21-jre-noble`
+(JRE provider) → `nginx:mainline` (runtime). Колектор стартує через `docker-entrypoint.d/` і
+оновлює PNG + `index.html` щогодини у фоні, поки nginx обслуговує запити.
+
+## Як додати нове джерело абонентів
+
+Завдяки інтерфейсу `SubscriberSource` це зводиться до двох кроків.
 
 **1. Реалізуй інтерфейс:**
 
@@ -98,47 +130,41 @@ class RestSubscriberSource(
     private val apiToken: String
 ) : SubscriberSource {
     override fun getSubscribers(): String {
-        // HTTP GET запит, повертає рядки в тому самому форматі:
+        // HTTP GET, повертає рядки у форматі першого токена:
         // dhcp_xxx_xe-0/0/2:100@router-hostname
         TODO("implement")
     }
 }
 ```
 
-**2. Підключи в `Main.kt`** (один рядок):
-
-```kotlin
-// замінити:
-val subscriberSource = LocalCommandSubscriberSource(config.subscribersCommand)
-// на:
-val subscriberSource = RestSubscriberSource(config.apiUrl, config.apiToken)
-```
-
-Більше нічого чіпати не потрібно.
+**2. Підключи в `Main.kt`** у методі `fetchSubscribers()` — додай ще одну гілку вибору джерела
+за аналогією з існуючим `MssqlSubscriberSource` / `LocalCommandSubscriberSource`.
 
 ## Як додати новий формат виводу
 
 1. Створи файл у `src/main/kotlin/net/ukrhub/noc/freerange/output/`
-2. Реалізуй функцію або object із методом `print()`/`save()` — дивись `TextOutput.kt` як приклад
-3. Додай новий `when`-блок у `Main.kt` (секція "Step 4: Process and output")
+2. Реалізуй object або клас із методом `print()`/`save()` — дивись `TextOutput.kt` як приклад
+3. Додай новий `when`-блок у `processHost()` або `processHostForWeb()` в `Main.kt`
 4. Додай відповідну CLI-опцію в `FreeRangeCommand` і ENV-змінну в `AppConfig`
 
 ## NETCONF і XPath
 
 `NetconfClient` використовує **JSch** для SSH і стандартний `javax.xml` для DOM + XPath.
 
-Якщо на твоїх пристроях інша структура XML (інший Junos, не Juniper) — XPath-вирази знаходяться в `NetconfClient.kt`, у методі `parseInterfaceVlanData()`. Вони namespace-unaware, тому префікси не потрібні.
+Якщо на твоїх пристроях інша структура XML — XPath-вирази знаходяться в `NetconfClient.kt`,
+у методі `parseInterfaceVlanData()`. Вони namespace-unaware, тому префікси не потрібні.
 
-Для відлагодження NETCONF-відповіді запусти з `-d` (дебаг) — XML буде виведений у stderr.
+Для відлагодження NETCONF-відповіді запусти з `-d` — XML буде виведений у stderr.
 
 ## Залежності
 
 | Бібліотека | Версія | Призначення |
 |------------|--------|-------------|
 | `com.jcraft:jsch` | 0.1.55 | SSH-транспорт для NETCONF |
+| `net.sourceforge.jtds:jtds` | 1.3.1 | JDBC для MS SQL Server (TDS 8.0, без SSL) |
 | `info.picocli:picocli` | 4.7.6 | CLI-парсинг |
 | `org.yaml:snakeyaml` | 2.3 | YAML-конфіг |
-| `log4j-api/core` | 2.24.3 | Логування |
+| `log4j-api/core/slf4j2-impl` | 2.24.3 | Логування |
 
 XML і PNG — стандартна Java (без зовнішніх залежностей).
 
@@ -147,7 +173,7 @@ XML і PNG — стандартна Java (без зовнішніх залежн
 - Розробка ведеться у feature-гілках від `main`
 - Назва гілки: `feature/назва-фічі` або `fix/опис-виправлення`
 - Коміти — короткі, у теперішньому часі: `Add REST subscriber source`, `Fix XPath for demux units`
-- Перед PR — переконайся що `./gradlew build` проходить без помилок
+- Перед PR — переконайся що `./gradlew jar` проходить без помилок
 
 ## Питання і пропозиції
 
