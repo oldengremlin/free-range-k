@@ -21,7 +21,12 @@ dependencies {
 }
 
 kotlin {
-    jvmToolchain(21)
+    jvmToolchain {
+        languageVersion = JavaLanguageVersion.of(
+            System.getenv("JAVA_VERSION")?.toIntOrNull()
+                ?: Runtime.version().feature().coerceAtLeast(21)
+        )
+    }
 }
 
 application {

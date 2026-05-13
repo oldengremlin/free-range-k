@@ -6,15 +6,18 @@
 
 | Інструмент | Версія |
 |------------|--------|
-| JDK | 21+ |
-| Gradle | 8.x (або `./gradlew` — wrapper завантажує сам) |
+| JDK | 21+ (перевірено на 21 та 24) |
+| Gradle | не потрібен — `./gradlew` (wrapper) завантажує сам |
 | Kotlin | 2.0.x (завантажується Gradle автоматично) |
 
 Перевірити:
 ```bash
-java --version   # openjdk 21+
+java --version   # 21+
 ./gradlew --version
 ```
+
+> **Важливо:** не запускай `gradle wrapper` вручну — він перезапише `gradle-wrapper.properties`
+> версією твого локального Gradle. Wrapper вже є в репо і налаштований правильно.
 
 ## Структура проекту
 
