@@ -14,7 +14,7 @@ class MssqlSubscriberSource(
     private val logger = LogManager.getLogger(MssqlSubscriberSource::class.java)
 
     override fun getSubscribers(): String {
-        val url = "jdbc:sqlserver://$server:$port;databaseName=$database;encrypt=false;trustServerCertificate=true"
+        val url = "jdbc:jtds:sqlserver://$server:$port/$database;tds=8.0;charset=UTF-8"
         logger.debug("Connecting to MSSQL: {}", url)
 
         val lines = mutableListOf<String>()
