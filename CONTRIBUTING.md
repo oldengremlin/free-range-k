@@ -6,9 +6,9 @@
 
 | Інструмент | Версія |
 |------------|--------|
-| JDK | 21+ (перевірено на 21 та 24) |
+| JDK | 21+ (перевірено на 21, 24, 25) |
 | Gradle | не потрібен — `./gradlew` (wrapper) завантажує сам |
-| Kotlin | 2.0.x (завантажується Gradle автоматично) |
+| Kotlin | 2.1.x (завантажується Gradle автоматично) |
 
 Перевірити:
 ```bash
@@ -18,6 +18,21 @@ java --version   # 21+
 
 > **Важливо:** не запускай `gradle wrapper` вручну — він перезапише `gradle-wrapper.properties`
 > версією твого локального Gradle. Wrapper вже є в репо і налаштований правильно.
+
+## NetBeans
+
+Проект налаштовано для роботи в NetBeans "з коробки". `gradle.properties` містить підказку:
+
+```properties
+netbeans.hint.jdkPlatform=Oracle_OpenJDK_21.0.2_13
+```
+
+Вона каже NetBeans використовувати Java 21 для запуску Gradle (Gradle 9.x підтримує Java 21–25,
+але сам процес Gradle daemon рекомендується запускати на LTS-версії).
+
+**Якщо у тебе інша версія JDK 21/24:** `Tools → Java Platforms → Add Platform`, після чого
+`Project Properties → Build → Gradle Execution → Java Runtime` → вибрати потрібний JDK.
+NetBeans автоматично оновить `netbeans.hint.jdkPlatform` у `gradle.properties` — закомітти зміну.
 
 ## Структура проекту
 

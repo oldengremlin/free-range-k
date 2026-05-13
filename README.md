@@ -27,6 +27,9 @@ Kotlin-порт оригінального [free-range](https://github.com/olden
 ## Збірка
 
 Потрібно: Java 21+ (перевірено на 21, 24, 25), Gradle wrapper вже в репо.
+Для **NetBeans**: `gradle.properties` містить `netbeans.hint.jdkPlatform` — IDE автоматично
+використає Java 21 для Gradle. Якщо потрібно змінити: `Tools → Java Platforms → Add Platform`,
+потім `Project Properties → Build → Gradle Execution → Java Runtime`.
 
 ```bash
 git clone https://github.com/oldengremlin/free-range-k.git
