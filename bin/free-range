@@ -1,4 +1,0 @@
-#!/usr/bin/env ruby
-require 'free-range'
-
-FreeRange.run
