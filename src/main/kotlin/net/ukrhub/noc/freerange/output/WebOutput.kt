@@ -6,11 +6,11 @@ import java.io.File
 
 object WebOutput {
 
-    data class IfaceResult(val name: String, val pngFile: String)
+    data class IfaceResult(val name: String, val imageFile: String)
 
     data class RouterResult(
         val hostLabel: String,
-        val overallPng: String,
+        val overallImage: String,
         val overallVlanResult: VlanProcessor.VlanResult,
         val interfaces: List<IfaceResult>
     )
@@ -69,15 +69,15 @@ ${CSS.trimIndent()}
             // Inner panels
             appendLine("<div class=\"panels\" id=\"r$ri-panels\">")
 
-            // Overall panel: PNG only
+            // Overall panel
             appendLine("<div class=\"panel active\">")
-            appendLine("<img src=\"${escapeHtml(r.overallPng)}\" alt=\"${escapeHtml(r.hostLabel)}\">")
+            appendLine("<object type=\"image/svg+xml\" data=\"${escapeHtml(r.overallImage)}\" style=\"max-width:100%;display:block\"></object>")
             appendLine("</div>")
 
-            // Per-interface panels: PNG only
+            // Per-interface panels
             for (iface in r.interfaces) {
                 appendLine("<div class=\"panel\">")
-                appendLine("<img src=\"${escapeHtml(iface.pngFile)}\" alt=\"${escapeHtml(iface.name)}\">")
+                appendLine("<object type=\"image/svg+xml\" data=\"${escapeHtml(iface.imageFile)}\" style=\"max-width:100%;display:block\"></object>")
                 appendLine("</div>")
             }
 
