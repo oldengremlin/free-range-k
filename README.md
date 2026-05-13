@@ -9,9 +9,11 @@ Kotlin-порт оригінального [free-range](https://github.com/olden
 - Підключення до Junos через **NETCONF** (RFC 6241, framing 1.0) — без sshpass і shell-команд
 - XPath-парсинг XML-конфігурації інтерфейсів прямо з `<running>` конфігурації
 - Аналіз розподілу VLAN із шістьма статусами
-- Вивід: текстовий, кольорова ASCII-таблиця або PNG-зображення (Java AWT)
+- Підтримка **кількох роутерів** одночасно (`-H r1,r2,r3 -s domain.net`)
+- Вивід: текстовий, кольорова ASCII-таблиця, PNG-зображення або **HTML-дашборд** з табами
+- Джерела абонентів: **прямий JDBC до MS SQL** (jTDS, TDS 8.0) або зовнішня команда
 - Конфігурація: CLI-аргументи → змінні оточення → YAML-файл → дефолти
-- Готовий до запуску у Docker
+- Готовий Docker-образ: **nginx + JRE**, оновлення раз на годину, вбудований вебсервер
 
 ## Статуси VLAN
 
@@ -28,16 +30,15 @@ Kotlin-порт оригінального [free-range](https://github.com/olden
 
 Потрібно: Java 21+ (перевірено на 21, 24, 25), Gradle wrapper вже в репо.
 Для **NetBeans**: `gradle.properties` містить `netbeans.hint.jdkPlatform` — IDE автоматично
-використає Java 21 для Gradle. Якщо потрібно змінити: `Tools → Java Platforms → Add Platform`,
-потім `Project Properties → Build → Gradle Execution → Java Runtime`.
+використає Java 21 для Gradle.
 
 ```bash
 git clone https://github.com/oldengremlin/free-range-k.git
 cd free-range-k
 
 # Збірка + fat JAR (wrapper вже є в репо — не запускай gradle wrapper!)
-./gradlew build
-# → build/libs/free-range-1.0.0.jar  (fat JAR, ~5 MB, всі залежності всередині)
+./gradlew jar
+# → build/libs/free-range-1.0.0.jar  (fat JAR, ~10 MB, всі залежності всередині)
 ```
 
 > **Увага:** не запускай `gradle wrapper` вручну — він перезапише `gradle-wrapper.properties`
@@ -64,22 +65,24 @@ java -jar build/libs/free-range-1.0.0.jar router.example.com -u admin -p secret
 Опції:
   -h, --help                    Показати довідку
   -V, --version                 Показати версію
-  -H, --host HOST               Hostname або IP-адреса роутера (альтернатива positional)
+  -H, --host HOST[,HOST...]     Comma-separated список роутерів
+  -s, --suffix SUFFIX           Домен-суфікс для коротких імен (напр. ukrhub.net)
   -u, --username USERNAME       Ім'я користувача для NETCONF/SSH
   -p, --password PASSWORD       Пароль для NETCONF/SSH
   -n, --no-color                Вимкнути кольоровий вивід
   -d, --debug                   Увімкнути дебаг-режим
   -t, --table                   Вивести ASCII-таблицю розподілу VLAN
-  -g, --table-png PATH          Зберегти таблицю як PNG у вказану директорію
+  -g, --table-png PATH          Зберегти таблиці як PNG у вказану директорію
+      --web                     Згенерувати index.html дашборд у директорії -g
   -i, --interface INTERFACE     Ім'я інтерфейсу (напр. xe-0/0/2, ps0, ae1) або 'all'
   -c, --config CONFIG_FILE      Шлях до YAML-конфігурації
 ```
 
 Host вказується будь-яким із трьох способів (пріоритет: `-H` = positional > `FREE_RANGE_HOST`):
 ```bash
-free-range router.example.com            # positional
-free-range -H router.example.com         # опція (зручно для Docker/env-only запуску)
-FREE_RANGE_HOST=router.example.com ...   # змінна оточення
+free-range router.example.com                    # один роутер (positional)
+free-range -H r1,r2,r3 -s ukrhub.net            # кілька роутерів із суфіксом
+FREE_RANGE_HOST=r1,r2,r3 FREE_RANGE_SUFFIX=... # через змінні оточення
 ```
 
 ## Змінні оточення
@@ -89,6 +92,7 @@ FREE_RANGE_HOST=router.example.com ...   # змінна оточення
 | Змінна | CLI-аналог | Дефолт |
 |--------|------------|--------|
 | `FREE_RANGE_HOST` | `<host>` або `-H` | — |
+| `FREE_RANGE_SUFFIX` | `-s` | — |
 | `FREE_RANGE_USERNAME` або `WHOAMI` | `-u` | — |
 | `FREE_RANGE_PASSWORD` або `WHATISMYPASSWD` | `-p` | — |
 | `FREE_RANGE_PORT` | — | `22` |
@@ -96,14 +100,44 @@ FREE_RANGE_HOST=router.example.com ...   # змінна оточення
 | `FREE_RANGE_DEBUG` | `-d` | вимк. |
 | `FREE_RANGE_TABLE` | `-t` | вимк. |
 | `FREE_RANGE_TABLE_PNG` | `-g` | — |
+| `FREE_RANGE_WEB` | `--web` | вимк. |
 | `FREE_RANGE_INTERFACE` | `-i` | — |
 | `FREE_RANGE_CONFIG` | `-c` | `~/.free-range.yaml` |
-| `FREE_RANGE_SUBSCRIBERS_CMD` | — | `ssh -C -x roffice /usr/local/share/noc/bin/radius-subscribers` |
 | `OPENCHANNEL` | — | `subsystem-netconf` |
+| `FREE_RANGE_ACC_SERVER` | — | — (без MSSQL) |
+| `FREE_RANGE_ACC_DATABASE` | — | `AccEquipment_V2_Release` |
+| `FREE_RANGE_ACC_USER` | — | — |
+| `FREE_RANGE_ACC_PASSWORD` | — | — |
+| `FREE_RANGE_ACC_PORT` | — | `1433` |
+| `FREE_RANGE_SUBSCRIBERS_CMD` | — | `ssh -C -x roffice ...` (fallback) |
 
 Пріоритет: **CLI > ENV > YAML > дефолт**
 
-> `FREE_RANGE_NO_COLOR`, `FREE_RANGE_DEBUG`, `FREE_RANGE_TABLE` — вмикаються будь-яким непорожнім значенням (`1`, `true`, `yes` — всі спрацьовують).
+> `FREE_RANGE_NO_COLOR`, `FREE_RANGE_DEBUG`, `FREE_RANGE_TABLE`, `FREE_RANGE_WEB` — вмикаються
+> будь-яким непорожнім значенням (`1`, `true`, `yes` — всі спрацьовують).
+
+## Джерела абонентів
+
+### Прямий MSSQL (рекомендовано)
+
+Якщо задано `FREE_RANGE_ACC_SERVER`, `FREE_RANGE_ACC_USER` і `FREE_RANGE_ACC_PASSWORD` —
+програма підключається до MS SQL Server через **jTDS** (підтримує TDS 8.0, без SSL):
+
+```bash
+FREE_RANGE_ACC_SERVER=10.100.1.59
+FREE_RANGE_ACC_USER=nocc
+FREE_RANGE_ACC_PASSWORD=...
+# FREE_RANGE_ACC_DATABASE=AccEquipment_V2_Release  # дефолт
+# FREE_RANGE_ACC_PORT=1433                          # дефолт
+```
+
+### Зовнішня команда (fallback)
+
+Якщо `FREE_RANGE_ACC_SERVER` не задано — виконується команда з `FREE_RANGE_SUBSCRIBERS_CMD`:
+
+```bash
+FREE_RANGE_SUBSCRIBERS_CMD="ssh -C -x roffice /usr/local/share/noc/bin/radius-subscribers"
+```
 
 ## YAML-конфігурація
 
@@ -114,10 +148,16 @@ FREE_RANGE_HOST=router.example.com ...   # змінна оточення
 username: korystuvach
 password: abrakadabra
 port: 22
-subscribers_command: "ssh -C -x roffice /usr/local/share/noc/bin/radius-subscribers"
 no_color: false
 debug: false
 openchannel: subsystem-netconf   # або exec
+
+# Джерело абонентів (одне з двох):
+acc_server: 10.100.1.59
+acc_database: AccEquipment_V2_Release
+acc_user: nocc
+acc_password: secret
+# subscribers_command: "ssh -C -x roffice ..."   # альтернатива
 ```
 
 > Файл із credentials не комітити у git — додай його до `.gitignore`.
@@ -125,22 +165,22 @@ openchannel: subsystem-netconf   # або exec
 ## Приклади
 
 ```bash
-# Базовий запуск — текстовий вивід combined ranges
+# Базовий запуск — текстовий вивід
 free-range router.example.com -u admin -p secret
 
 # ASCII-таблиця з кольорами
 free-range router.example.com -u admin -p secret -t
 
+# Кілька роутерів із суфіксом
+free-range -H r1,r2,r3 -s ukrhub.net -u admin -p secret -t
+
 # PNG у директорію ./output, тільки інтерфейс xe-0/0/2
 free-range router.example.com -u admin -p secret -g ./output -i xe-0/0/2
 
-# Всі інтерфейси з dynamic-profile ranges, PNG
-free-range router.example.com -u admin -p secret -g ./output -i all
+# HTML-дашборд: всі роутери, всі інтерфейси
+free-range -H r1,r2,r3 -s ukrhub.net -u admin -p secret -g /var/www/html --web
 
-# Через YAML-конфіг, дебаг
-free-range router.example.com -c config.yaml -d
-
-# Через змінні оточення (без аргументів)
+# Через змінні оточення
 FREE_RANGE_HOST=router.example.com \
 FREE_RANGE_USERNAME=admin \
 FREE_RANGE_PASSWORD=secret \
@@ -150,35 +190,54 @@ java -jar free-range-1.0.0.jar
 
 ## Docker
 
-```dockerfile
-FROM eclipse-temurin:21-jre
-COPY build/libs/free-range-1.0.0.jar /app/free-range.jar
-ENTRYPOINT ["java", "-jar", "/app/free-range.jar"]
-```
+Образ базується на **nginx:mainline** і містить вбудований JRE. Колектор запускається
+у фоні через `/docker-entrypoint.d/` і оновлює PNG + `index.html` щогодини.
+
+### Збірка
 
 ```bash
 docker build -t free-range .
-
-docker run --rm \
-  -e FREE_RANGE_USERNAME=admin \
-  -e FREE_RANGE_PASSWORD=secret \
-  -e FREE_RANGE_TABLE=1 \
-  free-range router.example.com
 ```
 
+### Запуск
+
+```bash
+docker run -d --name vlan \
+  -e FREE_RANGE_HOST=r1,r2,r3 \
+  -e FREE_RANGE_SUFFIX=ukrhub.net \
+  -e FREE_RANGE_USERNAME=admin \
+  -e FREE_RANGE_PASSWORD=secret \
+  -e FREE_RANGE_TABLE_PNG=/usr/share/nginx/html \
+  -e FREE_RANGE_WEB=1 \
+  -e FREE_RANGE_ACC_SERVER=10.100.1.59 \
+  -e FREE_RANGE_ACC_USER=nocc \
+  -e FREE_RANGE_ACC_PASSWORD=secret \
+  -p 8080:80 \
+  free-range
+```
+
+Після старту `http://localhost:8080/` показує актуальний дашборд із табами по роутерах та інтерфейсах.
+
+### docker-compose
+
 ```yaml
-# docker-compose.yml
 services:
-  free-range:
-    image: free-range
+  vlan:
+    build: .
+    container_name: vlan
+    restart: unless-stopped
     environment:
+      FREE_RANGE_HOST: r1,r2,r3
+      FREE_RANGE_SUFFIX: ukrhub.net
       FREE_RANGE_USERNAME: admin
       FREE_RANGE_PASSWORD: secret
-      FREE_RANGE_INTERFACE: xe-0/0/2
-      FREE_RANGE_TABLE_PNG: /output
-    volumes:
-      - ./output:/output
-    command: ["router.example.com"]
+      FREE_RANGE_TABLE_PNG: /usr/share/nginx/html
+      FREE_RANGE_WEB: "1"
+      FREE_RANGE_ACC_SERVER: 10.100.1.59
+      FREE_RANGE_ACC_USER: nocc
+      FREE_RANGE_ACC_PASSWORD: secret
+    ports:
+      - "8080:80"
 ```
 
 ## NETCONF
@@ -202,8 +261,9 @@ AppConfig.kt             злиття CLI / ENV / YAML / defaults
 netconf/
   NetconfClient.kt       JSch + NETCONF 1.0 + XPath-парсинг
 subscribers/
-  SubscriberSource.kt    інтерфейс (легко замінити на REST)
-  LocalCommandSubscriberSource.kt
+  SubscriberSource.kt    інтерфейс
+  MssqlSubscriberSource.kt  JDBC → MS SQL (jTDS, TDS 8.0)
+  LocalCommandSubscriberSource.kt  shell-команда (fallback)
 vlan/
   VlanStatus.kt          FREE / BUSY / ERROR / CONFIGURED / ANOTHER / UNUSED
   VlanProcessor.kt       логіка розподілу
@@ -211,13 +271,19 @@ output/
   TextOutput.kt          combined ranges + ANSI
   TableOutput.kt         41×100 ASCII grid
   PngOutput.kt           Java AWT BufferedImage
+  WebOutput.kt           HTML-дашборд (таби по роутерах / інтерфейсах)
+bin/
+  free-range.sh          цикл оновлення (while true; sleep 3600)
+docker-entrypoint.d/
+  40-free-range.sh       запуск колектора у фоні через nginx entrypoint
+Dockerfile               3-stage build: JDK builder → JRE provider → nginx runtime
 ```
 
 ## Вимоги
 
 - Java 21+
 - Juniper Junos із підтримкою NETCONF (практично будь-який пристрій після 10.x)
-- Доступ до команди `radius-subscribers` (або кастомна команда через `FREE_RANGE_SUBSCRIBERS_CMD`)
+- MS SQL Server (TDS 8.0+) **або** зовнішня команда для отримання абонентів
 
 ## Ліцензія
 
