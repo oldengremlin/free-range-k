@@ -7,7 +7,6 @@ import com.jcraft.jsch.Session
 import org.apache.logging.log4j.LogManager
 import org.w3c.dom.Document
 import org.w3c.dom.Element
-import org.w3c.dom.Node
 import org.w3c.dom.NodeList
 import java.io.InputStream
 import java.io.OutputStream
@@ -57,7 +56,6 @@ class NetconfClient(
     <filter type="subtree">
       <configuration>
         <interfaces/>
-        <dynamic-profiles/>
       </configuration>
     </filter>
   </get-config>
@@ -71,9 +69,6 @@ class NetconfClient(
 ]]>]]>"""
     }
 
-    /**
-     * Connects to device and performs NETCONF hello exchange.
-     */
     fun connect() {
         logger.debug("Connecting to {}:{} as {} via {}", host, port, username, openChannel)
 
@@ -100,21 +95,15 @@ class NetconfClient(
             channel.connect(10_000)
         }
 
-        // Read server hello
         val serverHello = readUntilDelimiter()
         logger.debug("Server hello received ({} chars)", serverHello.length)
 
-        // Send client hello
         send(HELLO_RPC)
         logger.debug("Client hello sent")
     }
 
-    /**
-     * Fetches interfaces + dynamic-profiles configuration via NETCONF get-config.
-     * Returns parsed XML Document with namespace-unaware DOM.
-     */
     fun fetchInterfacesConfig(): Document {
-        logger.debug("Sending get-config RPC for interfaces + dynamic-profiles")
+        logger.debug("Sending get-config RPC for interfaces")
         send(GET_CONFIG_RPC)
 
         val response = readUntilDelimiter()
@@ -129,10 +118,6 @@ class NetconfClient(
         return parseXmlNamespaceUnaware(response)
     }
 
-    /**
-     * Parses XML string into a Document with namespace-unaware processing.
-     * This allows XPath queries without namespace prefixes.
-     */
     private fun parseXmlNamespaceUnaware(xml: String): Document {
         val factory = DocumentBuilderFactory.newInstance().apply {
             isNamespaceAware = false
@@ -144,9 +129,6 @@ class NetconfClient(
         return builder.parse(xml.byteInputStream())
     }
 
-    /**
-     * Evaluates an XPath expression on the document and returns matching NodeList.
-     */
     fun xpath(doc: Document, expression: String): NodeList {
         val xpathFactory = XPathFactory.newInstance()
         val xpath = xpathFactory.newXPath()
@@ -154,21 +136,13 @@ class NetconfClient(
         return compiled.evaluate(doc, XPathConstants.NODESET) as NodeList
     }
 
-    /**
-     * Sends a string to the NETCONF channel.
-     */
     private fun send(data: String) {
         outputStream.write(data.toByteArray(Charsets.UTF_8))
         outputStream.flush()
     }
 
-    /**
-     * Reads from the NETCONF channel until the ]]>]]> delimiter is found.
-     */
     private fun readUntilDelimiter(): String {
         val buffer = StringBuilder()
-        val delimBytes = NETCONF_DELIMITER.toByteArray(Charsets.UTF_8)
-        val delimLen = delimBytes.size
         val readBuf = ByteArray(4096)
 
         while (true) {
@@ -189,33 +163,29 @@ class NetconfClient(
     }
 
     override fun close() {
+        try { send(CLOSE_SESSION_RPC) } catch (_: Exception) {}
         try {
-            send(CLOSE_SESSION_RPC)
-        } catch (_: Exception) {}
-        try {
-            if (::session.isInitialized && session.isConnected) {
-                session.disconnect()
-            }
+            if (::session.isInitialized && session.isConnected) session.disconnect()
         } catch (_: Exception) {}
     }
 
-    /**
-     * Data class for parsed interface VLAN configuration.
-     */
     data class InterfaceVlanData(
-        val ranges: Map<String, List<IntRange>>,      // interface -> list of VLAN ranges from dynamic-profile
-        val demuxUnits: Map<String, List<Int>>,        // interface -> list of unit numbers (demux, unnumbered)
-        val anotherVlans: Map<String, List<Int>>,      // interface -> list of explicit vlan-id values
-        val interfacesWithRanges: List<String>         // interfaces that have vlan-id-range
+        val ranges: Map<String, List<IntRange>>,
+        val demuxUnits: Map<String, List<Int>>,
+        val anotherVlans: Map<String, List<Int>>,
+        val interfacesWithRanges: List<String>
     )
 
     /**
-     * Parses all relevant VLAN data from the interfaces configuration document.
+     * Parses VLAN data from the interfaces config document.
      *
-     * Searches for VLAN ranges in multiple locations because Junos XML structure varies:
-     * - Directly on interface or unit: <vlan-id-range> or <vlan-id-list>
-     * - Under unit's <dynamic-profile> element: unit//dynamic-profile//vlan-id-range
-     * - Under top-level <dynamic-profiles> section, mapped back to interfaces via profile name
+     * Maps directly to the three Ruby CLI commands:
+     * - command_ranges: matches "dynamic-profile ... ranges START END" lines
+     *   → XML: interface/unit/dynamic-profile/ranges (with low/high children or text)
+     * - command_demux:  matches "unit N ... unnumbered-address" lines
+     *   → XML: interface/unit[unnumbered-address]
+     * - command_another: matches "vlan-id N" lines
+     *   → XML: interface/unit/vlan-id
      */
     fun parseInterfaceVlanData(doc: Document): InterfaceVlanData {
         val rangesMap = mutableMapOf<String, MutableList<IntRange>>()
@@ -223,102 +193,49 @@ class NetconfClient(
         val anotherMap = mutableMapOf<String, MutableList<Int>>()
         val interfacesWithRanges = mutableListOf<String>()
 
-        // --- Step 1: parse top-level <dynamic-profiles> section ---
-        // Build a map: profile-name -> list of vlan ranges defined in that profile
-        val profileRanges = mutableMapOf<String, MutableList<IntRange>>()
-        val dynamicProfiles = xpath(doc, "//dynamic-profiles/profile")
-        logger.debug("Found {} top-level dynamic-profile elements", dynamicProfiles.length)
-        for (i in 0 until dynamicProfiles.length) {
-            val profile = dynamicProfiles.item(i) as? Element ?: continue
-            val profileName = profile.getElementsByTagName("name").item(0)?.textContent?.trim() ?: continue
-            val list = profileRanges.getOrPut(profileName) { mutableListOf() }
-            extractVlanRangesFromElement(profile, list)
-        }
-        if (debug) {
-            logger.debug("Dynamic profile ranges: {}", profileRanges)
-        }
-
-        // --- Step 2: parse <interfaces> section ---
         val interfaces = xpath(doc, "//interfaces/interface")
         logger.debug("Found {} interface elements", interfaces.length)
 
         if (debug && interfaces.length > 0) {
-            // Dump first 3 interfaces as XML to help diagnose structure issues
-            val tf = TransformerFactory.newInstance().newTransformer().apply {
-                setOutputProperty(OutputKeys.INDENT, "yes")
-                setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes")
-            }
-            for (i in 0 until minOf(interfaces.length, 3)) {
-                val elem = interfaces.item(i) as? Element ?: continue
-                val sw = StringWriter()
-                tf.transform(DOMSource(elem), StreamResult(sw))
-                System.err.println("=== Interface XML [${i+1}/${interfaces.length}] ===")
-                System.err.println(sw.toString().take(3000))
-            }
+            dumpInterfaceXml(interfaces)
         }
 
         for (i in 0 until interfaces.length) {
             val iface = interfaces.item(i) as? Element ?: continue
             val ifaceName = iface.getElementsByTagName("name").item(0)?.textContent?.trim() ?: continue
 
-            // --- VLAN range search 1: direct vlan-id-range / vlan-id-list on interface or unit ---
-            val ifaceRangeList = rangesMap.getOrPut(ifaceName) { mutableListOf() }
-            val countBefore = ifaceRangeList.size
-            extractVlanRangesFromElement(iface, ifaceRangeList)
-            if (ifaceRangeList.size > countBefore && !interfacesWithRanges.contains(ifaceName)) {
-                interfacesWithRanges.add(ifaceName)
-            }
+            val ifaceRangeList = mutableListOf<IntRange>()
 
-            // --- VLAN range search 2: profile references on the interface itself ---
-            // <dynamic-profile> or <apply-macro> or <profile> child elements that reference a named profile
-            val profileRefNames = collectProfileReferences(iface)
-            for (profileRef in profileRefNames) {
-                val pRanges = profileRanges[profileRef]
-                if (!pRanges.isNullOrEmpty()) {
-                    ifaceRangeList.addAll(pRanges)
-                    if (!interfacesWithRanges.contains(ifaceName)) {
-                        interfacesWithRanges.add(ifaceName)
-                    }
-                }
-            }
-
-            // --- Units: demux detection and explicit vlan-id ---
             val units = iface.getElementsByTagName("unit")
             for (j in 0 until units.length) {
                 val unit = units.item(j) as? Element ?: continue
-                val unitName = unit.getElementsByTagName("name").item(0)?.textContent?.trim() ?: continue
-                val unitNum = unitName.toIntOrNull() ?: continue
+                val unitNum = unit.getElementsByTagName("name").item(0)?.textContent?.trim()?.toIntOrNull()
 
-                // command_demux: units with unnumbered-address
-                val unnumbered = unit.getElementsByTagName("unnumbered-address")
-                if (unnumbered.length > 0 && unitNum > 0) {
-                    demuxMap.getOrPut(ifaceName) { mutableListOf() }.add(unitNum)
+                // command_ranges: dynamic-profile > ranges
+                val dpElements = unit.getElementsByTagName("dynamic-profile")
+                for (k in 0 until dpElements.length) {
+                    val dp = dpElements.item(k) as? Element ?: continue
+                    extractDynamicProfileRanges(dp, ifaceRangeList)
                 }
 
-                // command_another: units with explicit vlan-id
-                val vlanIdElements = unit.getElementsByTagName("vlan-id")
-                if (vlanIdElements.length > 0) {
-                    val vlanId = vlanIdElements.item(0)?.textContent?.trim()?.toIntOrNull()
+                if (unitNum != null && unitNum > 0) {
+                    // command_demux: units with unnumbered-address
+                    if (unit.getElementsByTagName("unnumbered-address").length > 0) {
+                        demuxMap.getOrPut(ifaceName) { mutableListOf() }.add(unitNum)
+                    }
+
+                    // command_another: units with explicit vlan-id
+                    val vlanIdElem = unit.getElementsByTagName("vlan-id").item(0)
+                    val vlanId = vlanIdElem?.textContent?.trim()?.toIntOrNull()
                     if (vlanId != null && vlanId > 0) {
                         anotherMap.getOrPut(ifaceName) { mutableListOf() }.add(vlanId)
                     }
                 }
-
-                // Profile references on unit level
-                val unitProfileRefs = collectProfileReferences(unit)
-                for (profileRef in unitProfileRefs) {
-                    val pRanges = profileRanges[profileRef]
-                    if (!pRanges.isNullOrEmpty()) {
-                        ifaceRangeList.addAll(pRanges)
-                        if (!interfacesWithRanges.contains(ifaceName)) {
-                            interfacesWithRanges.add(ifaceName)
-                        }
-                    }
-                }
             }
 
-            if (ifaceRangeList.isEmpty()) {
-                rangesMap.remove(ifaceName)
+            if (ifaceRangeList.isNotEmpty()) {
+                rangesMap[ifaceName] = ifaceRangeList
+                if (!interfacesWithRanges.contains(ifaceName)) interfacesWithRanges.add(ifaceName)
             }
         }
 
@@ -329,48 +246,41 @@ class NetconfClient(
     }
 
     /**
-     * Extracts VLAN ranges from an element's descendants, trying multiple known element names:
-     * - vlan-id-range (e.g. "100-200" or "100 200")
-     * - vlan-id-list  (alternative Junos name)
-     * - members       (Ethernet-switching VLAN member ranges)
+     * Extracts VLAN ranges from a <dynamic-profile> element.
+     *
+     * Junos CLI: "dynamic-profile <name> ranges START END"
+     * In XML this becomes a <ranges> child of <dynamic-profile>.
+     * The range may be encoded as:
+     *   - structured:  <ranges><low>1527</low><high>1702</high></ranges>
+     *   - text hyphen: <ranges>1527-1702</ranges>
+     *   - text space:  <ranges>1527 1702</ranges>
+     *   - single:      <ranges>239</ranges>
      */
-    private fun extractVlanRangesFromElement(elem: Element, result: MutableList<IntRange>) {
-        for (tagName in listOf("vlan-id-range", "vlan-id-list", "members")) {
-            val nodes = elem.getElementsByTagName(tagName)
-            for (k in 0 until nodes.length) {
-                val text = nodes.item(k)?.textContent?.trim() ?: continue
-                // A "members" value that is a single integer is a unit number, not a range — skip
-                if (tagName == "members" && !text.contains('-') && !text.contains(' ')) continue
-                parseVlanRange(text)?.let { result.add(it) }
-            }
-        }
-    }
+    private fun extractDynamicProfileRanges(dp: Element, result: MutableList<IntRange>) {
+        val rangesNodes = dp.getElementsByTagName("ranges")
+        for (i in 0 until rangesNodes.length) {
+            val elem = rangesNodes.item(i) as? Element ?: continue
 
-    /**
-     * Collects dynamic-profile names referenced by an element.
-     * Junos uses various XML paths to reference a profile:
-     * - <dynamic-profile><profile-name>X</profile-name></dynamic-profile>
-     * - <dynamic-profile><name>X</name></dynamic-profile>
-     * - <apply-macro><name>X</name></apply-macro>
-     */
-    private fun collectProfileReferences(elem: Element): List<String> {
-        val refs = mutableListOf<String>()
-        val dpNodes = elem.getElementsByTagName("dynamic-profile")
-        for (i in 0 until dpNodes.length) {
-            val dp = dpNodes.item(i) as? Element ?: continue
-            // look for profile-name or name child
-            for (childTag in listOf("profile-name", "name")) {
-                val child = dp.getElementsByTagName(childTag).item(0)
-                val name = child?.textContent?.trim()
-                if (!name.isNullOrEmpty()) refs.add(name)
+            // Structured: <low>/<high> children
+            val lowText = elem.getElementsByTagName("low").item(0)?.textContent?.trim()
+            val highText = elem.getElementsByTagName("high").item(0)?.textContent?.trim()
+            if (lowText != null && highText != null) {
+                val start = lowText.toIntOrNull()
+                val end = highText.toIntOrNull()
+                if (start != null && end != null && start <= end) {
+                    result.add(start..end)
+                    continue
+                }
             }
+
+            // Text: "1527-1702" or "1527 1702" or "239"
+            val text = elem.textContent?.trim() ?: continue
+            parseVlanRange(text)?.let { result.add(it) }
         }
-        return refs
     }
 
     private fun parseVlanRange(text: String): IntRange? {
         val trimmed = text.trim()
-        // Handle "N-M" format
         if (trimmed.contains('-')) {
             val parts = trimmed.split('-', limit = 2)
             if (parts.size == 2) {
@@ -379,7 +289,6 @@ class NetconfClient(
                 if (start <= end) return start..end
             }
         }
-        // Handle "N M" space-separated format
         if (trimmed.contains(' ')) {
             val parts = trimmed.split(Regex("\\s+"), limit = 2)
             if (parts.size == 2) {
@@ -388,8 +297,21 @@ class NetconfClient(
                 if (start <= end) return start..end
             }
         }
-        // Single value
         val single = trimmed.toIntOrNull() ?: return null
         return single..single
+    }
+
+    private fun dumpInterfaceXml(interfaces: NodeList) {
+        val tf = TransformerFactory.newInstance().newTransformer().apply {
+            setOutputProperty(OutputKeys.INDENT, "yes")
+            setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes")
+        }
+        for (i in 0 until minOf(interfaces.length, 5)) {
+            val elem = interfaces.item(i) as? Element ?: continue
+            val sw = StringWriter()
+            tf.transform(DOMSource(elem), StreamResult(sw))
+            System.err.println("=== Interface XML [${i + 1}/${interfaces.length}] ===")
+            System.err.println(sw.toString().take(3000))
+        }
     }
 }
