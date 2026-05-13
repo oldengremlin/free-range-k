@@ -50,22 +50,24 @@ object TextOutput {
         return parts.joinToString(",")
     }
 
+    private val ESC: String = 0x1B.toChar().toString()
+
     private fun formatRange(start: Int, end: Int, status: VlanStatus, useColor: Boolean): String {
         val rangeText = if (start == end) "$start" else "$start-$end"
         return if (useColor) {
             val ansi = ansiForStatus(status)
-            "$ansi$rangeText[0m"
+            "$ansi$rangeText${ESC}[0m"
         } else {
             "$rangeText(${status.code})"
         }
     }
 
     private fun ansiForStatus(status: VlanStatus): String = when (status) {
-        VlanStatus.FREE       -> "[32m"   // green
-        VlanStatus.BUSY       -> "[33m"   // yellow
-        VlanStatus.ERROR      -> "[31m"   // red
-        VlanStatus.CONFIGURED -> "[35m"   // magenta
-        VlanStatus.ANOTHER    -> "[34m"   // blue
-        VlanStatus.UNUSED     -> "[90m"   // dark grey
+        VlanStatus.FREE       -> "${ESC}[32m"   // green
+        VlanStatus.BUSY       -> "${ESC}[33m"   // yellow
+        VlanStatus.ERROR      -> "${ESC}[31m"   // red
+        VlanStatus.CONFIGURED -> "${ESC}[35m"   // magenta
+        VlanStatus.ANOTHER    -> "${ESC}[34m"   // blue
+        VlanStatus.UNUSED     -> "${ESC}[90m"   // dark grey
     }
 }

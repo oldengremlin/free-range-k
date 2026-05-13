@@ -90,19 +90,21 @@ object TableOutput {
         return if (useColor) formatChar(status, true) else c.toString()
     }
 
+    private const val ESC = ""
+
     private fun formatChar(status: VlanStatus, useColor: Boolean): String {
         val c = status.code
         if (!useColor) return c.toString()
         val bg = bgAnsiForStatus(status)
-        return "${bg}[30m$c[0m"
+        return "${bg}${ESC}[30m$c${ESC}[0m"
     }
 
     private fun bgAnsiForStatus(status: VlanStatus): String = when (status) {
-        VlanStatus.FREE       -> "[48;5;2m"   // green background
-        VlanStatus.BUSY       -> "[48;5;3m"   // yellow background
-        VlanStatus.ERROR      -> "[48;5;1m"   // red background
-        VlanStatus.CONFIGURED -> "[48;5;5m"   // magenta background
-        VlanStatus.ANOTHER    -> "[48;5;4m"   // blue background
-        VlanStatus.UNUSED     -> "[48;5;8m"   // dark grey background
+        VlanStatus.FREE       -> "${ESC}[48;5;2m"   // green background
+        VlanStatus.BUSY       -> "${ESC}[48;5;3m"   // yellow background
+        VlanStatus.ERROR      -> "${ESC}[48;5;1m"   // red background
+        VlanStatus.CONFIGURED -> "${ESC}[48;5;5m"   // magenta background
+        VlanStatus.ANOTHER    -> "${ESC}[48;5;4m"   // blue background
+        VlanStatus.UNUSED     -> "${ESC}[48;5;8m"   // dark grey background
     }
 }
