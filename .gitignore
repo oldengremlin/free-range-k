@@ -27,3 +27,5 @@ Thumbs.db
 # Runtime config (never commit credentials)
 .env
 free-range.yaml
+
+png/

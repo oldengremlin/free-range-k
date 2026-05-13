@@ -53,6 +53,8 @@ ${CSS.trimIndent()}
             val active = if (ri == 0) " active" else ""
             appendLine("<div class=\"panel$active\">")
 
+            appendLine("<pre>${buildSummaryHtml(r.overallVlanResult)}</pre>")
+
             // Inner tab bar
             append("<div class=\"tab-bar inner\" id=\"r$ri-bar\">")
             append("<button class=\"tab active\" onclick=\"switchTab('r$ri',0)\">overall</button>")
@@ -69,7 +71,7 @@ ${CSS.trimIndent()}
             // Overall panel: PNG + text summary
             appendLine("<div class=\"panel active\">")
             appendLine("<img src=\"${escapeHtml(r.overallPng)}\" alt=\"${escapeHtml(r.hostLabel)}\">")
-            appendLine("<pre>${buildSummaryHtml(r.overallVlanResult)}</pre>")
+//            appendLine("<pre>${buildSummaryHtml(r.overallVlanResult)}</pre>")
             appendLine("</div>")
 
             // Per-interface panels: PNG only
