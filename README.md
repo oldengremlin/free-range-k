@@ -2,7 +2,7 @@
 
 Аналіз розподілу VLAN на мережевих пристроях Juniper через **NETCONF + XPath**.
 
-Kotlin-порт оригінального [free-range](https://github.com/oldengremlin/free-range) (Ruby).
+Розвиток ідей оригінального [free-range](https://github.com/oldengremlin/free-range) (Ruby) із розширеними можливостями.
 
 ## Можливості
 
