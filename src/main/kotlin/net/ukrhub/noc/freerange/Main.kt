@@ -69,6 +69,13 @@ class FreeRangeCommand : Runnable {
         }
 
         val hosts = resolveHosts()
+        val effectiveWeb = web || System.getenv("FREE_RANGE_WEB")?.isNotEmpty() == true
+        val effectivePng = tablePng ?: System.getenv("FREE_RANGE_TABLE_PNG")
+
+        if (effectiveWeb && effectivePng == null) {
+            System.err.println("Error: FREE_RANGE_WEB requires FREE_RANGE_TABLE_PNG to be set.")
+            exitProcess(1)
+        }
 
         // Fetch RADIUS subscribers once — they're global across all routers
         val firstConfig = buildConfig(hosts.first())
@@ -77,11 +84,11 @@ class FreeRangeCommand : Runnable {
 
         val processor = VlanProcessor()
 
-        if (web) {
+        if (effectiveWeb) {
             val routerResults = hosts.map { host ->
-                processHostForWeb(host, rawSubscribers, processor)
+                processHostForWeb(host, rawSubscribers, processor, effectivePng!!)
             }
-            WebOutput.generate(routerResults, tablePng!!)
+            WebOutput.generate(routerResults, effectivePng!!)
         } else {
             for (host in hosts) {
                 val config = buildConfig(host)
@@ -101,7 +108,8 @@ class FreeRangeCommand : Runnable {
                 System.err.println("Usage: free-range <host> [options]  or  free-range -H <host>[,<host>...] [options]")
                 exitProcess(1)
             }
-        return raw.map { h -> if (suffix != null && !h.contains('.')) "$h.$suffix" else h }
+        val effectiveSuffix = suffix ?: System.getenv("FREE_RANGE_SUFFIX")
+        return raw.map { h -> if (effectiveSuffix != null && !h.contains('.')) "$h.$effectiveSuffix" else h }
     }
 
     private fun buildConfig(host: String): AppConfig = try {
@@ -192,11 +200,11 @@ class FreeRangeCommand : Runnable {
     private fun processHostForWeb(
         host: String,
         rawSubscribers: String,
-        processor: VlanProcessor
+        processor: VlanProcessor,
+        dir: String
     ): WebOutput.RouterResult {
         val config = buildConfig(host)
         val vlanData = fetchVlanData(config)
-        val dir = tablePng!!
 
         // Overall (no interface filter)
         val overallActive = processor.parseActiveSubscribers(rawSubscribers, config.hostLabel, null)
