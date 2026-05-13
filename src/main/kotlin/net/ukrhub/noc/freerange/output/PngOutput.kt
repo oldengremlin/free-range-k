@@ -97,7 +97,7 @@ object PngOutput {
                 if (status != null) {
                     val color = STATUS_COLORS[status] ?: Color.WHITE
                     g.color = color
-                    g.fillRect(x, y, CELL_WIDTH - 1, CELL_HEIGHT - 1)
+                    g.fillRect(x, y, CELL_WIDTH, CELL_HEIGHT)
                     g.color = Color.BLACK
                     g.drawString(status.code.toString(), x + 2, y + FONT_SIZE)
                 }
