@@ -51,14 +51,14 @@ free-range-k/
 ## Збірка і запуск
 
 ```bash
-# Компіляція
+# Компіляція + fat JAR (за один крок)
 ./gradlew build
+# → build/libs/free-range-1.0.0.jar
 
 # Запуск (для розробки)
 ./gradlew run --args="router.example.com -u admin -p secret -d"
 
-# Fat JAR
-./gradlew shadowJar
+# Запуск fat JAR
 java -jar build/libs/free-range-1.0.0.jar router.example.com -u admin -p secret
 
 # Очистка

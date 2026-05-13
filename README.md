@@ -26,18 +26,15 @@ Kotlin-порт оригінального [free-range](https://github.com/olden
 
 ## Збірка
 
-Потрібно: Java 21+ (перевірено на 21 та 24), Gradle 8+.
+Потрібно: Java 21+ (перевірено на 21, 24, 25), Gradle wrapper вже в репо.
 
 ```bash
 git clone https://github.com/oldengremlin/free-range-k.git
 cd free-range-k
 
-# Збірка + тести (wrapper вже є в репо — не запускай gradle wrapper!)
+# Збірка + fat JAR (wrapper вже є в репо — не запускай gradle wrapper!)
 ./gradlew build
-
-# Fat JAR (все в одному файлі)
-./gradlew shadowJar
-# → build/libs/free-range-1.0.0.jar
+# → build/libs/free-range-1.0.0.jar  (fat JAR, ~5 MB, всі залежності всередині)
 ```
 
 > **Увага:** не запускай `gradle wrapper` вручну — він перезапише `gradle-wrapper.properties`
