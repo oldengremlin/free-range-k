@@ -10,7 +10,7 @@
 - XPath-парсинг XML-конфігурації інтерфейсів прямо з `<running>` конфігурації
 - Аналіз розподілу VLAN із шістьма статусами
 - Підтримка **кількох роутерів** одночасно (`-H r1,r2,r3 -s domain.net`)
-- Вивід: текстовий, кольорова ASCII-таблиця, PNG-зображення або **HTML-дашборд** з табами
+- Вивід: текстовий, кольорова ASCII-таблиця, PNG-зображення або **HTML-дашборд** з табами та SVG-графіками
 - Джерела абонентів: **прямий JDBC до MS SQL** (jTDS, TDS 8.0) або зовнішня команда
 - Конфігурація: CLI-аргументи → змінні оточення → YAML-файл → дефолти
 - Готовий Docker-образ: **nginx + JRE**, оновлення раз на годину, вбудований вебсервер
@@ -177,7 +177,7 @@ free-range -H r1,r2,r3 -s ukrhub.net -u admin -p secret -t
 # PNG у директорію ./output, тільки інтерфейс xe-0/0/2
 free-range router.example.com -u admin -p secret -g ./output -i xe-0/0/2
 
-# HTML-дашборд: всі роутери, всі інтерфейси
+# HTML-дашборд із SVG (tooltip при наведенні: «VLAN 234, busy»): всі роутери, всі інтерфейси
 free-range -H r1,r2,r3 -s ukrhub.net -u admin -p secret -g /var/www/html --web
 
 # Через змінні оточення
@@ -191,7 +191,7 @@ java -jar free-range-1.0.0.jar
 ## Docker
 
 Образ базується на **nginx:mainline** і містить вбудований JRE. Колектор запускається
-у фоні через `/docker-entrypoint.d/` і оновлює PNG + `index.html` щогодини.
+у фоні через `/docker-entrypoint.d/` і оновлює SVG + `index.html` щогодини.
 
 ### Збірка
 
@@ -270,7 +270,8 @@ vlan/
 output/
   TextOutput.kt          combined ranges + ANSI
   TableOutput.kt         41×100 ASCII grid
-  PngOutput.kt           Java AWT BufferedImage
+  PngOutput.kt           Java AWT BufferedImage (для -g без --web)
+  SvgOutput.kt           SVG із tooltip на кожній клітинці (для --web)
   WebOutput.kt           HTML-дашборд (таби по роутерах / інтерфейсах)
 bin/
   free-range.sh          цикл оновлення (while true; sleep 3600)
