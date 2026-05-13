@@ -69,10 +69,9 @@ ${CSS.trimIndent()}
             // Inner panels
             appendLine("<div class=\"panels\" id=\"r$ri-panels\">")
 
-            // Overall panel: PNG + text summary
+            // Overall panel: PNG only
             appendLine("<div class=\"panel active\">")
             appendLine("<img src=\"${escapeHtml(r.overallPng)}\" alt=\"${escapeHtml(r.hostLabel)}\">")
-//            appendLine("<pre>${buildSummaryHtml(r.overallVlanResult)}</pre>")
             appendLine("</div>")
 
             // Per-interface panels: PNG only
