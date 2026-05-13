@@ -12,6 +12,7 @@ data class AppConfig(
     val host: String,
     val username: String,
     val password: String,
+    val suffix: String? = null,
     val port: Int = 22,
     val netconfPort: Int = 22,
     val noColor: Boolean = false,
@@ -49,6 +50,7 @@ data class AppConfig(
             cliTablePng: String?,
             cliInterface: String?,
             cliConfigFile: String?,
+            cliSuffix: String? = null,
         ): AppConfig {
             // Determine config file path
             val configFilePath = cliConfigFile
@@ -106,10 +108,15 @@ data class AppConfig(
                 ?: yamlStr("openchannel")
                 ?: "subsystem-netconf"
 
+            val suffix = cliSuffix
+                ?: System.getenv("FREE_RANGE_SUFFIX")
+                ?: yamlStr("suffix")
+
             return AppConfig(
                 host = host,
                 username = username,
                 password = password,
+                suffix = suffix,
                 port = port,
                 netconfPort = netconfPort,
                 noColor = noColor,
@@ -123,8 +130,11 @@ data class AppConfig(
         }
     }
 
-    /** Short host label (first component of FQDN) used in output */
-    val hostLabel: String get() = host.split('.').first()
+    /** Host label used in output and filenames: strips the known suffix, or uses full hostname */
+    val hostLabel: String get() {
+        if (suffix != null && host.endsWith(".$suffix")) return host.removeSuffix(".$suffix")
+        return host
+    }
 
     /** Whether to use ANSI color in terminal output */
     val useColor: Boolean

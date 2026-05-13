@@ -123,7 +123,8 @@ class FreeRangeCommand : Runnable {
             cliTable = table,
             cliTablePng = tablePng,
             cliInterface = interfaceName,
-            cliConfigFile = configFile
+            cliConfigFile = configFile,
+            cliSuffix = suffix
         )
     } catch (e: IllegalStateException) {
         System.err.println("Error: ${e.message}")
