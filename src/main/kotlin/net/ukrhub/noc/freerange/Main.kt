@@ -4,6 +4,7 @@ import net.ukrhub.noc.freerange.netconf.NetconfClient
 import net.ukrhub.noc.freerange.output.PngOutput
 import net.ukrhub.noc.freerange.output.TableOutput
 import net.ukrhub.noc.freerange.output.TextOutput
+import net.ukrhub.noc.freerange.output.WebOutput
 import net.ukrhub.noc.freerange.subscribers.LocalCommandSubscriberSource
 import net.ukrhub.noc.freerange.vlan.VlanProcessor
 import org.apache.logging.log4j.Level
@@ -23,11 +24,14 @@ import kotlin.system.exitProcess
 )
 class FreeRangeCommand : Runnable {
 
-    @Parameters(index = "0", description = ["Router hostname or IP address"], arity = "0..1")
+    @Parameters(index = "0", description = ["Router hostname or IP (alternative to -H)"], arity = "0..1")
     var hostArg: String? = null
 
-    @Option(names = ["-H", "--host"], description = ["Router hostname or IP address (alternative to positional argument)"])
-    var hostOpt: String? = null
+    @Option(names = ["-H", "--host"], description = ["Comma-separated list of router hostnames/IPs"])
+    var hostsOpt: String? = null
+
+    @Option(names = ["-s", "--suffix"], description = ["Domain suffix appended to bare hostnames (e.g. ukrhub.net)"])
+    var suffix: String? = null
 
     @Option(names = ["-u", "--username"], description = ["SSH/NETCONF username"])
     var username: String? = null
@@ -53,134 +57,165 @@ class FreeRangeCommand : Runnable {
     @Option(names = ["-c", "--config"], description = ["Path to YAML config file"])
     var configFile: String? = null
 
+    @Option(names = ["--web"], description = ["Generate index.html dashboard in -g directory (requires -g)"])
+    var web: Boolean = false
+
     private val logger = LogManager.getLogger(FreeRangeCommand::class.java)
 
     override fun run() {
-        val host = hostOpt
-            ?: hostArg
-            ?: System.getenv("FREE_RANGE_HOST")
-            ?: run {
-                System.err.println("Error: host is required.")
-                System.err.println("Usage: free-range <host> [options]  or  free-range -H <host> [options]")
-                System.err.println("Run 'free-range --help' for usage information.")
-                exitProcess(1)
-            }
-
-        val config = try {
-            AppConfig.resolve(
-                host = host,
-                cliUsername = username,
-                cliPassword = password,
-                cliPort = null,
-                cliNoColor = noColor,
-                cliDebug = debug,
-                cliTable = table,
-                cliTablePng = tablePng,
-                cliInterface = interfaceName,
-                cliConfigFile = configFile
-            )
-        } catch (e: IllegalStateException) {
-            System.err.println("Error: ${e.message}")
+        if (web && tablePng == null) {
+            System.err.println("Error: --web requires -g/--table-png to specify output directory.")
             exitProcess(1)
         }
 
-        if (config.debug) {
-            Configurator.setLevel("net.ukrhub.noc.freerange", Level.DEBUG)
-            logger.debug("Debug mode enabled")
-            logger.debug("Config: host={}, port={}, username={}, openChannel={}", config.host, config.netconfPort, config.username, config.openChannel)
-            logger.debug("Options: noColor={}, table={}, tablePng={}, interface={}", config.noColor, config.table, config.tablePng, config.interfaceName)
-        }
+        val hosts = resolveHosts()
 
-        // Step 1: Fetch RADIUS subscribers
+        // Fetch RADIUS subscribers once — they're global across all routers
+        val firstConfig = buildConfig(hosts.first())
+        if (firstConfig.debug) Configurator.setLevel("net.ukrhub.noc.freerange", Level.DEBUG)
+        val rawSubscribers = fetchSubscribers(firstConfig)
+
+        val processor = VlanProcessor()
+
+        if (web) {
+            val routerResults = hosts.map { host ->
+                processHostForWeb(host, rawSubscribers, processor)
+            }
+            WebOutput.generate(routerResults, tablePng!!)
+        } else {
+            for (host in hosts) {
+                val config = buildConfig(host)
+                processHost(config, rawSubscribers, processor)
+            }
+        }
+    }
+
+    // ── helpers ────────────────────────────────────────────────────────────
+
+    private fun resolveHosts(): List<String> {
+        val raw = hostsOpt?.split(',')?.map { it.trim() }
+            ?: hostArg?.let { listOf(it) }
+            ?: System.getenv("FREE_RANGE_HOST")?.split(',')?.map { it.trim() }
+            ?: run {
+                System.err.println("Error: host is required.")
+                System.err.println("Usage: free-range <host> [options]  or  free-range -H <host>[,<host>...] [options]")
+                exitProcess(1)
+            }
+        return raw.map { h -> if (suffix != null && !h.contains('.')) "$h.$suffix" else h }
+    }
+
+    private fun buildConfig(host: String): AppConfig = try {
+        AppConfig.resolve(
+            host = host,
+            cliUsername = username,
+            cliPassword = password,
+            cliPort = null,
+            cliNoColor = noColor,
+            cliDebug = debug,
+            cliTable = table,
+            cliTablePng = tablePng,
+            cliInterface = interfaceName,
+            cliConfigFile = configFile
+        )
+    } catch (e: IllegalStateException) {
+        System.err.println("Error: ${e.message}")
+        exitProcess(1)
+    }
+
+    private fun fetchSubscribers(config: AppConfig): String {
         System.err.println("Fetching subscribers...")
-        val subscriberSource = LocalCommandSubscriberSource(config.subscribersCommand)
-        val rawSubscribers = try {
-            subscriberSource.getSubscribers()
+        val raw = try {
+            LocalCommandSubscriberSource(config.subscribersCommand).getSubscribers()
         } catch (e: Exception) {
             System.err.println("Error fetching subscribers: ${e.message}")
             logger.debug("Subscriber fetch exception", e)
             exitProcess(1)
         }
-
-        if (rawSubscribers.isBlank()) {
-            System.err.println("Error: subscribers command returned empty output. Check path or access.")
+        if (raw.isBlank()) {
+            System.err.println("Error: subscribers command returned empty output.")
             exitProcess(1)
         }
-        logger.debug("Received {} lines of subscriber data", rawSubscribers.lines().size)
+        logger.debug("Received {} lines of subscriber data", raw.lines().size)
+        return raw
+    }
 
-        // Step 2: Connect via NETCONF and fetch interfaces config
+    private fun fetchVlanData(config: AppConfig): NetconfClient.InterfaceVlanData {
         System.err.println("Connecting to ${config.host}...")
-        val netconfClient = NetconfClient(
-            host = config.host,
-            port = config.netconfPort,
-            username = config.username,
-            password = config.password,
-            openChannel = config.openChannel,
-            debug = config.debug
-        )
-
-        val vlanData = try {
-            netconfClient.use { client ->
+        return try {
+            NetconfClient(
+                host = config.host,
+                port = config.netconfPort,
+                username = config.username,
+                password = config.password,
+                openChannel = config.openChannel,
+                debug = config.debug
+            ).use { client ->
                 client.connect()
                 System.err.println("Connected. Fetching interface configuration...")
                 val doc = client.fetchInterfacesConfig()
                 client.parseInterfaceVlanData(doc)
             }
         } catch (e: Exception) {
-            System.err.println("Error communicating with device: ${e.message}")
+            System.err.println("Error communicating with ${config.host}: ${e.message}")
             logger.debug("NETCONF exception", e)
             exitProcess(1)
         }
+    }
 
-        logger.debug(
-            "Parsed NETCONF data: {} interfaces with ranges, {} with demux, {} with another vlans",
-            vlanData.ranges.size, vlanData.demuxUnits.size, vlanData.anotherVlans.size
-        )
+    private fun processHost(config: AppConfig, rawSubscribers: String, processor: VlanProcessor) {
+        val vlanData = fetchVlanData(config)
 
-        val processor = VlanProcessor()
-
-        // Step 3: Determine which interfaces to process
         val interfacesToProcess: List<String?> = when (config.interfaceName) {
             "all" -> {
                 val ifaces = vlanData.interfacesWithRanges
                 if (ifaces.isEmpty()) {
-                    System.err.println("Error: no interfaces with configured ranges found.")
+                    System.err.println("No interfaces with configured ranges found on ${config.host}.")
                     exitProcess(1)
                 }
-                logger.debug("Processing all {} interfaces: {}", ifaces.size, ifaces)
                 ifaces
             }
             null -> listOf(null)
             else -> listOf(config.interfaceName)
         }
 
-        // Step 4: Process and output for each interface
         for (iface in interfacesToProcess) {
             val activeVlans = processor.parseActiveSubscribers(rawSubscribers, config.hostLabel, iface)
-
-            if (config.debug) {
-                logger.debug("Interface: {}, active VLANs: {}", iface ?: "all", activeVlans.size)
-            }
-
             val result = processor.process(vlanData, activeVlans, iface)
-
             when {
-                config.tablePng != null -> {
-                    PngOutput.save(result.statuses, result.counts, config.tablePng!!, config.hostLabel, iface)
-                }
-                config.table -> {
-                    TableOutput.print(result.statuses, result.counts, config.useColor, config.hostLabel, iface)
-                }
-                else -> {
-                    TextOutput.print(result.statuses, config.useColor, config.hostLabel, iface)
-                }
+                config.tablePng != null -> PngOutput.save(result.statuses, result.counts, config.tablePng!!, config.hostLabel, iface)
+                config.table -> TableOutput.print(result.statuses, result.counts, config.useColor, config.hostLabel, iface)
+                else -> TextOutput.print(result.statuses, config.useColor, config.hostLabel, iface)
             }
         }
+    }
+
+    private fun processHostForWeb(
+        host: String,
+        rawSubscribers: String,
+        processor: VlanProcessor
+    ): WebOutput.RouterResult {
+        val config = buildConfig(host)
+        val vlanData = fetchVlanData(config)
+        val dir = tablePng!!
+
+        // Overall (no interface filter)
+        val overallActive = processor.parseActiveSubscribers(rawSubscribers, config.hostLabel, null)
+        val overallResult = processor.process(vlanData, overallActive, null)
+        val overallPng = PngOutput.save(overallResult.statuses, overallResult.counts, dir, config.hostLabel, null)
+
+        // Per-interface
+        val ifaceResults = vlanData.interfacesWithRanges.map { iface ->
+            val active = processor.parseActiveSubscribers(rawSubscribers, config.hostLabel, iface)
+            val result = processor.process(vlanData, active, iface)
+            val pngFile = PngOutput.save(result.statuses, result.counts, dir, config.hostLabel, iface)
+            WebOutput.IfaceResult(iface, pngFile)
+        }
+
+        return WebOutput.RouterResult(config.hostLabel, overallPng, overallResult, ifaceResults)
     }
 }
 
 fun main(args: Array<String>) {
     val cmd = CommandLine(FreeRangeCommand())
-    val exitCode = cmd.execute(*args)
-    exitProcess(exitCode)
+    exitProcess(cmd.execute(*args))
 }

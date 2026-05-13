@@ -51,7 +51,7 @@ object PngOutput {
         outputPath: String,
         target: String,
         interfaceName: String?
-    ) {
+    ): String {
         val width = LABEL_WIDTH + COLS * CELL_WIDTH + 10
         val height = HEADER_HEIGHT + ROWS * CELL_HEIGHT + 20 + 50
 
@@ -122,6 +122,7 @@ object PngOutput {
         val file = File(dir, filename)
         ImageIO.write(image, "PNG", file)
         println("Image saved: ${file.absolutePath}")
+        return filename
     }
 
     private fun drawLegendLine(g: java.awt.Graphics2D, font: Font, y: Int) {
