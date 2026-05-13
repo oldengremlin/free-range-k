@@ -18,7 +18,7 @@ FROM nginx:mainline
 LABEL maintainer="Alexander Russkih <olden@ukr-com.net>"
 
 RUN apt update && \
-    apt install -y --no-install-recommends locales locales-all procps && \
+    apt install -y --no-install-recommends locales locales-all procps openssh-client && \
     rm -rf /var/lib/apt/lists/* && \
     mkdir -p /safe/htpasswords
 
