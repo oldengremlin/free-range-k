@@ -1,7 +1,8 @@
+import org.gradle.api.file.DuplicatesStrategy
+
 plugins {
     kotlin("jvm") version "2.0.21"
     application
-    id("com.github.johnrengelman.shadow") version "8.1.1"
 }
 
 group = "net.ukrhub.noc"
@@ -28,9 +29,15 @@ application {
     mainClass.set("net.ukrhub.noc.freerange.MainKt")
 }
 
-tasks.shadowJar {
+tasks.jar {
     archiveBaseName.set("free-range")
     archiveClassifier.set("")
     archiveVersion.set(project.version.toString())
-    manifest { attributes["Main-Class"] = "net.ukrhub.noc.freerange.MainKt" }
+    manifest {
+        attributes["Main-Class"] = "net.ukrhub.noc.freerange.MainKt"
+    }
+    from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) }) {
+        exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "module-info.class")
+    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
