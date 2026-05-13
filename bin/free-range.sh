@@ -13,6 +13,6 @@
 
 while true; do
     date >&2
-    java -jar /usr/local/bin/free-range.jar
+    "$JAVA_HOME/bin/java" -jar /usr/local/bin/free-range.jar
     sleep 3600
 done
