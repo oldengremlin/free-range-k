@@ -21,7 +21,12 @@ data class AppConfig(
     val tablePng: String? = null,
     val interfaceName: String? = null,
     val subscribersCommand: String = "ssh -C -x roffice /usr/local/share/noc/bin/radius-subscribers",
-    val openChannel: String = "subsystem-netconf"
+    val openChannel: String = "subsystem-netconf",
+    val accServer: String? = null,
+    val accDatabase: String = "AccEquipment_V2_Release",
+    val accUser: String? = null,
+    val accPassword: String? = null,
+    val accPort: Int = 1433,
 ) {
     companion object {
         /**
@@ -112,6 +117,12 @@ data class AppConfig(
                 ?: System.getenv("FREE_RANGE_SUFFIX")
                 ?: yamlStr("suffix")
 
+            val accServer = System.getenv("FREE_RANGE_ACC_SERVER") ?: yamlStr("acc_server")
+            val accDatabase = System.getenv("FREE_RANGE_ACC_DATABASE") ?: yamlStr("acc_database") ?: "AccEquipment_V2_Release"
+            val accUser = System.getenv("FREE_RANGE_ACC_USER") ?: yamlStr("acc_user")
+            val accPassword = System.getenv("FREE_RANGE_ACC_PASSWORD") ?: yamlStr("acc_password")
+            val accPort = System.getenv("FREE_RANGE_ACC_PORT")?.toIntOrNull() ?: yamlInt("acc_port") ?: 1433
+
             return AppConfig(
                 host = host,
                 username = username,
@@ -125,7 +136,12 @@ data class AppConfig(
                 tablePng = tablePng,
                 interfaceName = interfaceName,
                 subscribersCommand = subscribersCommand,
-                openChannel = openChannel
+                openChannel = openChannel,
+                accServer = accServer,
+                accDatabase = accDatabase,
+                accUser = accUser,
+                accPassword = accPassword,
+                accPort = accPort,
             )
         }
     }

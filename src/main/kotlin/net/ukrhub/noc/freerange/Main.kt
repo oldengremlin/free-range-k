@@ -6,6 +6,7 @@ import net.ukrhub.noc.freerange.output.TableOutput
 import net.ukrhub.noc.freerange.output.TextOutput
 import net.ukrhub.noc.freerange.output.WebOutput
 import net.ukrhub.noc.freerange.subscribers.LocalCommandSubscriberSource
+import net.ukrhub.noc.freerange.subscribers.MssqlSubscriberSource
 import net.ukrhub.noc.freerange.vlan.VlanProcessor
 import org.apache.logging.log4j.Level
 import org.apache.logging.log4j.LogManager
@@ -132,16 +133,28 @@ class FreeRangeCommand : Runnable {
     }
 
     private fun fetchSubscribers(config: AppConfig): String {
-        System.err.println("Fetching subscribers...")
+        val source = if (config.accServer != null && config.accUser != null && config.accPassword != null) {
+            System.err.println("Fetching subscribers from MSSQL (${config.accServer})...")
+            MssqlSubscriberSource(
+                server = config.accServer,
+                database = config.accDatabase,
+                user = config.accUser,
+                password = config.accPassword,
+                port = config.accPort,
+            )
+        } else {
+            System.err.println("Fetching subscribers via command...")
+            LocalCommandSubscriberSource(config.subscribersCommand)
+        }
         val raw = try {
-            LocalCommandSubscriberSource(config.subscribersCommand).getSubscribers()
+            source.getSubscribers()
         } catch (e: Exception) {
             System.err.println("Error fetching subscribers: ${e.message}")
             logger.debug("Subscriber fetch exception", e)
             exitProcess(1)
         }
         if (raw.isBlank()) {
-            System.err.println("Error: subscribers command returned empty output.")
+            System.err.println("Error: subscriber source returned empty output.")
             exitProcess(1)
         }
         logger.debug("Received {} lines of subscriber data", raw.lines().size)
