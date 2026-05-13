@@ -1,0 +1,136 @@
+package net.ukrhub.noc.freerange
+
+import org.yaml.snakeyaml.Yaml
+import java.io.File
+import java.io.FileInputStream
+
+/**
+ * Application configuration loaded from CLI args, environment variables, and YAML file.
+ * Priority: CLI > ENV > YAML > default
+ */
+data class AppConfig(
+    val host: String,
+    val username: String,
+    val password: String,
+    val port: Int = 22,
+    val netconfPort: Int = 22,
+    val noColor: Boolean = false,
+    val debug: Boolean = false,
+    val table: Boolean = false,
+    val tablePng: String? = null,
+    val interfaceName: String? = null,
+    val subscribersCommand: String = "ssh -C -x roffice /usr/local/share/noc/bin/radius-subscribers",
+    val openChannel: String = "subsystem-netconf"
+) {
+    companion object {
+        /**
+         * Loads configuration from YAML file.
+         */
+        fun loadYaml(path: String): Map<String, Any?> {
+            val file = File(path)
+            if (!file.exists()) return emptyMap()
+            return FileInputStream(file).use { stream ->
+                @Suppress("UNCHECKED_CAST")
+                Yaml().load<Map<String, Any?>>(stream) ?: emptyMap()
+            }
+        }
+
+        /**
+         * Resolves configuration by merging CLI, ENV, YAML and defaults.
+         */
+        fun resolve(
+            host: String,
+            cliUsername: String?,
+            cliPassword: String?,
+            cliPort: Int?,
+            cliNoColor: Boolean,
+            cliDebug: Boolean,
+            cliTable: Boolean,
+            cliTablePng: String?,
+            cliInterface: String?,
+            cliConfigFile: String?,
+        ): AppConfig {
+            // Determine config file path
+            val configFilePath = cliConfigFile
+                ?: System.getenv("FREE_RANGE_CONFIG")
+                ?: "${System.getProperty("user.home")}/.free-range.yaml"
+
+            val yaml = loadYaml(configFilePath)
+
+            fun yamlStr(key: String) = yaml[key]?.toString()
+            fun yamlBool(key: String) = yaml[key]?.toString()?.lowercase()?.let { it == "true" || it == "1" }
+            fun yamlInt(key: String) = yaml[key]?.toString()?.toIntOrNull()
+
+            val username = cliUsername
+                ?: System.getenv("FREE_RANGE_USERNAME")
+                ?: System.getenv("WHOAMI")
+                ?: yamlStr("username")
+                ?: error("Username not specified. Use -u/--username, FREE_RANGE_USERNAME, WHOAMI env, or YAML config.")
+
+            val password = cliPassword
+                ?: System.getenv("FREE_RANGE_PASSWORD")
+                ?: System.getenv("WHATISMYPASSWD")
+                ?: yamlStr("password")
+                ?: error("Password not specified. Use -p/--password, FREE_RANGE_PASSWORD, WHATISMYPASSWD env, or YAML config.")
+
+            val port = cliPort
+                ?: System.getenv("FREE_RANGE_PORT")?.toIntOrNull()
+                ?: yamlInt("port")
+                ?: 22
+
+            val netconfPort = System.getenv("FREE_RANGE_NETCONF_PORT")?.toIntOrNull() ?: port
+
+            val noColor = cliNoColor
+                || System.getenv("FREE_RANGE_NO_COLOR")?.isNotEmpty() == true
+                || yamlBool("no_color") == true
+
+            val debug = cliDebug
+                || System.getenv("FREE_RANGE_DEBUG")?.isNotEmpty() == true
+                || yamlBool("debug") == true
+
+            val table = cliTable
+                || System.getenv("FREE_RANGE_TABLE")?.isNotEmpty() == true
+                || yamlBool("table") == true
+
+            val tablePng = cliTablePng
+                ?: System.getenv("FREE_RANGE_TABLE_PNG")
+
+            val interfaceName = cliInterface
+                ?: System.getenv("FREE_RANGE_INTERFACE")
+
+            val subscribersCommand = System.getenv("FREE_RANGE_SUBSCRIBERS_CMD")
+                ?: yamlStr("subscribers_command")
+                ?: "ssh -C -x roffice /usr/local/share/noc/bin/radius-subscribers"
+
+            val openChannel = System.getenv("OPENCHANNEL")
+                ?: yamlStr("openchannel")
+                ?: "subsystem-netconf"
+
+            return AppConfig(
+                host = System.getenv("FREE_RANGE_HOST") ?: host,
+                username = username,
+                password = password,
+                port = port,
+                netconfPort = netconfPort,
+                noColor = noColor,
+                debug = debug,
+                table = table,
+                tablePng = tablePng,
+                interfaceName = interfaceName,
+                subscribersCommand = subscribersCommand,
+                openChannel = openChannel
+            )
+        }
+    }
+
+    /** Short host label (first component of FQDN) used in output */
+    val hostLabel: String get() = host.split('.').first()
+
+    /** Whether to use ANSI color in terminal output */
+    val useColor: Boolean
+        get() {
+            if (noColor) return false
+            val term = System.getenv("TERM")
+            return term != null && term != "dumb"
+        }
+}
