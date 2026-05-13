@@ -1,104 +1,213 @@
-# FreeRange
+# free-range
 
-A Ruby gem to analyze VLAN distribution on network devices, generating tables or PNG images.
+Аналіз розподілу VLAN на мережевих пристроях Juniper через **NETCONF + XPath**.
 
-## Installation
+Kotlin-порт оригінального [free-range](https://github.com/oldengremlin/free-range) (Ruby).
 
-### Debian/Ubuntu
-1. Install dependencies:
-   ```bash
-   sudo apt install ruby ruby-dev imagemagick libmagickcore-dev libmagickwand-dev sshpass
-   sudo gem install rmagick
-   ```
-2. Install the gem:
-   ```bash
-   sudo gem install free-range
-   ```
-   or
-   ```bash
-   gem install free-range -v 0.2.0
-   ```
+## Можливості
 
-### Windows
-1. Install Ruby using RubyInstaller: https://rubyinstaller.org/ (choose Ruby+Devkit 3.1.x).
-2. Install ImageMagick: https://imagemagick.org/script/download.php#windows (enable "Install legacy components").
-3. Install `sshpass` via:
-   - **Cygwin**: Download from https://www.cygwin.com/, select the `sshpass` package, and add Cygwin’s `bin` to PATH.
-   - **WSL**: Run `wsl --install`, then in Ubuntu: `sudo apt install sshpass`.
-4. Install the gem:
-   ```cmd
-   gem install free-range -v 0.2.0
-   ```
+- Підключення до Junos через **NETCONF** (RFC 6241, framing 1.0) — без sshpass і shell-команд
+- XPath-парсинг XML-конфігурації інтерфейсів прямо з `<running>` конфігурації
+- Аналіз розподілу VLAN із шістьма статусами
+- Вивід: текстовий, кольорова ASCII-таблиця або PNG-зображення (Java AWT)
+- Конфігурація: CLI-аргументи → змінні оточення → YAML-файл → дефолти
+- Готовий до запуску у Docker
 
-## Usage
+## Статуси VLAN
+
+| Символ | Колір | Значення |
+|--------|-------|----------|
+| `f` | зелений | **free** — у діапазоні dynamic-profile, абонента немає |
+| `b` | жовтий | **busy** — у діапазоні, абонент активний |
+| `e` | червоний | **error** — абонент є, але VLAN поза будь-яким діапазоном |
+| `c` | фіолетовий | **configured** — є `vlan-id` і він у діапазоні |
+| `a` | синій | **another** — є `vlan-id`, але поза діапазоном |
+| `u` | сірий | **unused** — поза всіма діапазонами, абонента немає |
+
+## Збірка
+
+Потрібно: Java 21+, Gradle 8+ (або використовуй wrapper `./gradlew`).
+
 ```bash
-free-range <IP-or-hostname> [-u username] [-p password] [-n] [-d] [-t] [-g path] [-i interface] [-c config_file]
+git clone https://github.com/oldengremlin/free-range-k.git
+cd free-range-k
+
+# Збірка + тести
+./gradlew build
+
+# Fat JAR (все в одному файлі)
+./gradlew shadowJar
+# → build/libs/free-range-1.0.0.jar
 ```
 
-### Options
-- `-h, --help`: Display this help message.
-- `-u, --username USERNAME`: SSH username (overrides config file and `WHOAMI` environment variable).
-- `-p, --password PASSWORD`: SSH password (overrides config file and `WHATISMYPASSWD` environment variable).
-- `-n, --no-color`: Disable colored output.
-- `-d, --debug`: Enable debug mode.
-- `-t, --table`: Display VLAN distribution table.
-- `-g, --table-png PATH`: Save VLAN distribution as a PNG image to the specified path.
-- `-i, --interface INTERFACE`: Interface name (e.g., `xe-0/0/2`, `ps0`, `ae1`, `irb`) or `all`.
-- `-c, --config CONFIG_FILE`: Path to a Ruby configuration file.
+## Запуск
 
-### Configuration File
-You can specify custom commands and credentials in a Ruby configuration file (e.g., `config.rb`):
-```ruby
-# Конфігурація для FreeRange::Config
-self.username = "korystuvach"
-self.password = "abrakadabra"
-define_singleton_method(:ssh_command) do
-  "sshpass -p \"#{@login[:password]}\" ssh -C -x -4 -o StrictHostKeyChecking=no #{@login[:username]}@#{@login[:target]}"
-end
-define_singleton_method(:subscribers_command) do
-  "/path/to/custom/radius-subscribers"
-end
-define_singleton_method(:command_interfaces) do
-  'show configuration interfaces | no-more | display set | match dynamic-profile'
-end
-define_singleton_method(:command_ranges) do |interface = nil|
-  interface ? "show configuration interfaces #{interface} | no-more | display set | match ranges" : 'show configuration interfaces | no-more | display set | match ranges'
-end
-define_singleton_method(:command_demux) do |interface = nil|
-  interface ? "show configuration interfaces #{interface} | display set | match demux" : 'show configuration interfaces | display set | match demux'
-end
-define_singleton_method(:command_another) do |interface = nil|
-  interface ? "show configuration interfaces #{interface} | display set | match vlan" : 'show configuration interfaces | display set | match vlan'
-end
-```
-
-### Examples
 ```bash
-free-range rhoh15-1.ukrhub.net -u korystuvach -p abrakadabra
-free-range rhoh15-1.ukrhub.net -u korystuvach -p abrakadabra -t
-free-range rhoh15-1.ukrhub.net -u korystuvach -p abrakadabra -g ./output -i xe-0/0/2
-free-range rhoh15-1.ukrhub.net -u korystuvach -p abrakadabra -d -i all
-free-range rhoh15-1.ukrhub.net -c config.rb
-free-range rhoh15-1.ukrhub.net -c config.rb -t
-free-range rhoh15-1.ukrhub.net -c config.rb -g ./output -i xe-0/0/2
-free-range rhoh15-1.ukrhub.net -c config.rb -d -i all
+# Через Gradle (для розробки)
+./gradlew run --args="router.example.com -u admin -p secret"
+
+# Через fat JAR (для production)
+java -jar build/libs/free-range-1.0.0.jar router.example.com -u admin -p secret
 ```
 
-## Documentation
-To generate documentation locally:
+## Опції
+
+```
+Використання: free-range <host> [options]
+
+Параметри:
+  <host>                        Hostname або IP-адреса роутера
+
+Опції:
+  -h, --help                    Показати довідку
+  -V, --version                 Показати версію
+  -u, --username USERNAME       Ім'я користувача для NETCONF/SSH
+  -p, --password PASSWORD       Пароль для NETCONF/SSH
+  -n, --no-color                Вимкнути кольоровий вивід
+  -d, --debug                   Увімкнути дебаг-режим
+  -t, --table                   Вивести ASCII-таблицю розподілу VLAN
+  -g, --table-png PATH          Зберегти таблицю як PNG у вказану директорію
+  -i, --interface INTERFACE     Ім'я інтерфейсу (напр. xe-0/0/2, ps0, ae1) або 'all'
+  -c, --config CONFIG_FILE      Шлях до YAML-конфігурації
+```
+
+## Змінні оточення
+
+Всі CLI-опції мають відповідні змінні оточення (зручно для Docker):
+
+| Змінна | CLI-аналог | Дефолт |
+|--------|------------|--------|
+| `FREE_RANGE_HOST` | `<host>` | — |
+| `FREE_RANGE_USERNAME` або `WHOAMI` | `-u` | — |
+| `FREE_RANGE_PASSWORD` або `WHATISMYPASSWD` | `-p` | — |
+| `FREE_RANGE_PORT` | — | `22` |
+| `FREE_RANGE_NO_COLOR` | `-n` | вимк. |
+| `FREE_RANGE_DEBUG` | `-d` | вимк. |
+| `FREE_RANGE_TABLE` | `-t` | вимк. |
+| `FREE_RANGE_TABLE_PNG` | `-g` | — |
+| `FREE_RANGE_INTERFACE` | `-i` | — |
+| `FREE_RANGE_CONFIG` | `-c` | `~/.free-range.yaml` |
+| `FREE_RANGE_SUBSCRIBERS_CMD` | — | `ssh -C -x roffice /usr/local/share/noc/bin/radius-subscribers` |
+| `OPENCHANNEL` | — | `subsystem-netconf` |
+
+Пріоритет: **CLI > ENV > YAML > дефолт**
+
+> `FREE_RANGE_NO_COLOR`, `FREE_RANGE_DEBUG`, `FREE_RANGE_TABLE` — вмикаються будь-яким непорожнім значенням (`1`, `true`, `yes` — всі спрацьовують).
+
+## YAML-конфігурація
+
+За замовчуванням читається `~/.free-range.yaml` (або шлях із `-c` / `FREE_RANGE_CONFIG`).
+
+```yaml
+# ~/.free-range.yaml
+username: korystuvach
+password: abrakadabra
+port: 22
+subscribers_command: "ssh -C -x roffice /usr/local/share/noc/bin/radius-subscribers"
+no_color: false
+debug: false
+openchannel: subsystem-netconf   # або exec
+```
+
+> Файл із credentials не комітити у git — додай його до `.gitignore`.
+
+## Приклади
+
 ```bash
-gem install yard
-yardoc 'lib/**/*.rb'
+# Базовий запуск — текстовий вивід combined ranges
+free-range router.example.com -u admin -p secret
+
+# ASCII-таблиця з кольорами
+free-range router.example.com -u admin -p secret -t
+
+# PNG у директорію ./output, тільки інтерфейс xe-0/0/2
+free-range router.example.com -u admin -p secret -g ./output -i xe-0/0/2
+
+# Всі інтерфейси з dynamic-profile ranges, PNG
+free-range router.example.com -u admin -p secret -g ./output -i all
+
+# Через YAML-конфіг, дебаг
+free-range router.example.com -c config.yaml -d
+
+# Через змінні оточення (без аргументів)
+FREE_RANGE_HOST=router.example.com \
+FREE_RANGE_USERNAME=admin \
+FREE_RANGE_PASSWORD=secret \
+FREE_RANGE_TABLE=1 \
+java -jar free-range-1.0.0.jar
 ```
-View the generated documentation in the `doc/` directory (open `doc/index.html` in a browser).
 
-## Prerequisites
-- Ensure `/usr/local/share/noc/bin/radius-subscribers` is accessible or provide an alternative script for subscriber data.
-- For Windows, ensure `sshpass` is in PATH (via Cygwin or WSL).
-- Supported interface names include `xe-0/0/2`, `ps0`, `ae1`, `irb`, etc., or `all` for all interfaces.
+## Docker
 
-## Source Code
-Available at: https://github.com/oldengremlin/free-range
+```dockerfile
+FROM eclipse-temurin:21-jre
+COPY build/libs/free-range-1.0.0.jar /app/free-range.jar
+ENTRYPOINT ["java", "-jar", "/app/free-range.jar"]
+```
 
-## License
-Apache-2.0
+```bash
+docker build -t free-range .
+
+docker run --rm \
+  -e FREE_RANGE_USERNAME=admin \
+  -e FREE_RANGE_PASSWORD=secret \
+  -e FREE_RANGE_TABLE=1 \
+  free-range router.example.com
+```
+
+```yaml
+# docker-compose.yml
+services:
+  free-range:
+    image: free-range
+    environment:
+      FREE_RANGE_USERNAME: admin
+      FREE_RANGE_PASSWORD: secret
+      FREE_RANGE_INTERFACE: xe-0/0/2
+      FREE_RANGE_TABLE_PNG: /output
+    volumes:
+      - ./output:/output
+    command: ["router.example.com"]
+```
+
+## NETCONF
+
+Підключення відбувається по SSH (порт 22) із використанням **NETCONF 1.0** (`]]>]]>` framing).
+
+Підтримується два режими каналу (керується `OPENCHANNEL`):
+- `subsystem-netconf` — стандартний SSH subsystem (дефолт, Junos ≥ 10.x)
+- `exec` — `xml-mode netconf need-trailer` (альтернатива для старих пристроїв)
+
+Запит — `<get-config>` з фільтром по `<interfaces>`, XPath-парсинг:
+- Діапазони dynamic-profile: `//interfaces/interface/unit//dynamic-profile//vlan-id-range`
+- Demux-інтерфейси: `//interfaces/interface/unit[family/inet/unnumbered-address]`
+- Окремі VLAN ID: `//interfaces/interface/unit[vlan-id]/vlan-id`
+
+## Архітектура
+
+```
+Main.kt                  точка входу (picocli)
+AppConfig.kt             злиття CLI / ENV / YAML / defaults
+netconf/
+  NetconfClient.kt       JSch + NETCONF 1.0 + XPath-парсинг
+subscribers/
+  SubscriberSource.kt    інтерфейс (легко замінити на REST)
+  LocalCommandSubscriberSource.kt
+vlan/
+  VlanStatus.kt          FREE / BUSY / ERROR / CONFIGURED / ANOTHER / UNUSED
+  VlanProcessor.kt       логіка розподілу
+output/
+  TextOutput.kt          combined ranges + ANSI
+  TableOutput.kt         41×100 ASCII grid
+  PngOutput.kt           Java AWT BufferedImage
+```
+
+## Вимоги
+
+- Java 21+
+- Juniper Junos із підтримкою NETCONF (практично будь-який пристрій після 10.x)
+- Доступ до команди `radius-subscribers` (або кастомна команда через `FREE_RANGE_SUBSCRIBERS_CMD`)
+
+## Ліцензія
+
+[Apache-2.0](LICENSE)
