@@ -80,15 +80,15 @@ class VlanProcessor {
         }
 
         // Step 4: overlay "another" vlan-id values
-        // FREE  + vlan-id → CONFIGURED  (slot in range, configured but idle)
-        // UNUSED + vlan-id → ANOTHER    (vlan-id outside any range)
-        // BUSY / ERROR stay unchanged   (active subscriber takes priority)
+        // non-UNUSED + vlan-id → CONFIGURED  (explicit unit takes priority over range/subscriber status)
+        // UNUSED + vlan-id → ANOTHER         (vlan-id outside any range)
         for (v in anotherVlans) {
             if (v > 0) {
-                when (allVlans[v]) {
-                    VlanStatus.FREE   -> allVlans[v] = VlanStatus.CONFIGURED
-                    VlanStatus.UNUSED -> allVlans[v] = VlanStatus.ANOTHER
-                    else -> {}
+                val current = allVlans[v]
+                allVlans[v] = if (current != null && current != VlanStatus.UNUSED) {
+                    VlanStatus.CONFIGURED
+                } else {
+                    VlanStatus.ANOTHER
                 }
             }
         }
