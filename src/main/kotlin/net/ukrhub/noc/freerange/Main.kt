@@ -2,6 +2,7 @@ package net.ukrhub.noc.freerange
 
 import net.ukrhub.noc.freerange.netconf.NetconfClient
 import net.ukrhub.noc.freerange.output.PngOutput
+import net.ukrhub.noc.freerange.output.SvgOutput
 import net.ukrhub.noc.freerange.output.TableOutput
 import net.ukrhub.noc.freerange.output.TextOutput
 import net.ukrhub.noc.freerange.output.WebOutput
@@ -223,17 +224,17 @@ class FreeRangeCommand : Runnable {
         // Overall (no interface filter)
         val overallActive = processor.parseActiveSubscribers(rawSubscribers, config.hostLabel, null)
         val overallResult = processor.process(vlanData, overallActive, null)
-        val overallPng = PngOutput.save(overallResult.statuses, overallResult.counts, dir, config.hostLabel, null)
+        val overallSvg = SvgOutput.save(overallResult.statuses, overallResult.counts, dir, config.hostLabel, null)
 
         // Per-interface
         val ifaceResults = vlanData.interfacesWithRanges.map { iface ->
             val active = processor.parseActiveSubscribers(rawSubscribers, config.hostLabel, iface)
             val result = processor.process(vlanData, active, iface)
-            val pngFile = PngOutput.save(result.statuses, result.counts, dir, config.hostLabel, iface)
-            WebOutput.IfaceResult(iface, pngFile)
+            val svgFile = SvgOutput.save(result.statuses, result.counts, dir, config.hostLabel, iface)
+            WebOutput.IfaceResult(iface, svgFile)
         }
 
-        return WebOutput.RouterResult(config.hostLabel, overallPng, overallResult, ifaceResults)
+        return WebOutput.RouterResult(config.hostLabel, overallSvg, overallResult, ifaceResults)
     }
 }
 

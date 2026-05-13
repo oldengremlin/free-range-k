@@ -1,0 +1,137 @@
+package net.ukrhub.noc.freerange.output
+
+import net.ukrhub.noc.freerange.vlan.VlanStatus
+import java.io.File
+
+object SvgOutput {
+
+    private val STATUS_COLORS = mapOf(
+        VlanStatus.FREE       to "#00ff00",
+        VlanStatus.BUSY       to "#ffff00",
+        VlanStatus.ERROR      to "#ff0000",
+        VlanStatus.CONFIGURED to "#ff00ff",
+        VlanStatus.ANOTHER    to "#0000ff",
+        VlanStatus.UNUSED     to "#555555"
+    )
+
+    private val STATUS_NAMES = mapOf(
+        VlanStatus.FREE       to "free",
+        VlanStatus.BUSY       to "busy",
+        VlanStatus.ERROR      to "error",
+        VlanStatus.CONFIGURED to "configured",
+        VlanStatus.ANOTHER    to "another",
+        VlanStatus.UNUSED     to "unused"
+    )
+
+    private const val CELL_W = 12
+    private const val CELL_H = 20
+    private const val ROWS = 41
+    private const val COLS = 100
+    private const val HEADER_H = 60
+    private const val LABEL_W = 50
+    private const val FONT = 14
+    private const val CHAR_W = 8  // monospace character width approximation
+
+    fun save(
+        statuses: Map<Int, VlanStatus>,
+        counts: Map<VlanStatus, Int>,
+        outputPath: String,
+        target: String,
+        interfaceName: String?
+    ): String {
+        val dir = File(outputPath)
+        if (!dir.exists()) dir.mkdirs()
+        val safeName = interfaceName?.replace('/', '-')
+        val filename = "free-range-$target${if (safeName != null) "-$safeName" else ""}.svg"
+        File(dir, filename).writeText(buildSvg(statuses, counts, target, interfaceName))
+        println("SVG saved: ${File(dir, filename).absolutePath}")
+        return filename
+    }
+
+    fun buildSvg(
+        statuses: Map<Int, VlanStatus>,
+        counts: Map<VlanStatus, Int>,
+        target: String,
+        interfaceName: String?
+    ): String {
+        val w = LABEL_W + COLS * CELL_W + 10
+        val h = HEADER_H + ROWS * CELL_H + 20 + 50
+        val title = "VLAN Distribution for $target${if (interfaceName != null) " ($interfaceName)" else ""}"
+
+        return buildString {
+            appendLine("""<svg xmlns="http://www.w3.org/2000/svg" width="$w" height="$h">""")
+            appendLine("""<rect width="$w" height="$h" fill="white"/>""")
+
+            // Title
+            appendLine("""<text x="10" y="25" font-family="monospace" font-size="18" font-weight="bold">${xml(title)}</text>""")
+
+            // Column group headers (0..9)
+            for (i in 0..9) {
+                val x = LABEL_W + i * 10 * CELL_W + 5
+                appendLine("""<text x="$x" y="${HEADER_H - 5}" font-family="monospace" font-size="$FONT">${i}</text>""")
+            }
+
+            // Grid
+            for (row in 0..40) {
+                val startVlan = row * 100
+                val endVlan = minOf(startVlan + 99, 4094)
+                val y = HEADER_H + row * CELL_H
+
+                appendLine("""<text x="5" y="${y + FONT}" font-family="monospace" font-size="$FONT">${"%4d".format(startVlan)}</text>""")
+
+                for ((col, vlan) in (startVlan..endVlan).withIndex()) {
+                    val status = statuses[vlan] ?: continue
+                    val x = LABEL_W + col * CELL_W
+                    val fill = STATUS_COLORS[status]!!
+                    val name = STATUS_NAMES[status]!!
+                    append("""<rect x="$x" y="$y" width="$CELL_W" height="$CELL_H" fill="$fill">""")
+                    append("""<title>VLAN $vlan, $name</title>""")
+                    appendLine("</rect>")
+                    appendLine("""<text x="${x + 2}" y="${y + FONT}" font-family="monospace" font-size="$FONT">${status.code}</text>""")
+                }
+            }
+
+            // Legend
+            val legendY = h - 50
+            var x = 10
+            appendLine("""<text x="$x" y="$legendY" font-family="monospace" font-size="$FONT">Legend: </text>""")
+            x += "Legend: ".length * CHAR_W
+            val legendEntries = VlanStatus.entries.map { it to "=${STATUS_NAMES[it]}" }
+            for ((idx, entry) in legendEntries.withIndex()) {
+                val (status, label) = entry
+                val fill = STATUS_COLORS[status]!!
+                appendLine("""<rect x="$x" y="${legendY - FONT + 2}" width="10" height="12" fill="$fill"/>""")
+                appendLine("""<text x="${x + 2}" y="$legendY" font-family="monospace" font-size="$FONT">${status.code}</text>""")
+                x += 12
+                val sep = if (idx < legendEntries.size - 1) ", " else ""
+                appendLine("""<text x="$x" y="$legendY" font-family="monospace" font-size="$FONT">${xml(label)}$sep</text>""")
+                x += (label.length + sep.length) * CHAR_W
+            }
+
+            // Summary
+            val summaryY = h - 30
+            x = 10
+            appendLine("""<text x="$x" y="$summaryY" font-family="monospace" font-size="$FONT">Total: </text>""")
+            x += "Total: ".length * CHAR_W
+            for ((idx, status) in VlanStatus.entries.withIndex()) {
+                val fill = STATUS_COLORS[status]!!
+                val count = counts[status] ?: 0
+                appendLine("""<rect x="$x" y="${summaryY - FONT + 2}" width="10" height="12" fill="$fill"/>""")
+                appendLine("""<text x="${x + 2}" y="$summaryY" font-family="monospace" font-size="$FONT">${status.code}</text>""")
+                x += 12
+                val sep = if (idx < VlanStatus.entries.size - 1) ", " else ""
+                val countStr = "=$count$sep"
+                appendLine("""<text x="$x" y="$summaryY" font-family="monospace" font-size="$FONT">$countStr</text>""")
+                x += countStr.length * CHAR_W
+            }
+
+            append("</svg>")
+        }
+    }
+
+    private fun xml(s: String) = s
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;")
+}
