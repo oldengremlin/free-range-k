@@ -24,7 +24,10 @@ import kotlin.system.exitProcess
 class FreeRangeCommand : Runnable {
 
     @Parameters(index = "0", description = ["Router hostname or IP address"], arity = "0..1")
-    var host: String? = null
+    var hostArg: String? = null
+
+    @Option(names = ["-H", "--host"], description = ["Router hostname or IP address (alternative to positional argument)"])
+    var hostOpt: String? = null
 
     @Option(names = ["-u", "--username"], description = ["SSH/NETCONF username"])
     var username: String? = null
@@ -53,19 +56,19 @@ class FreeRangeCommand : Runnable {
     private val logger = LogManager.getLogger(FreeRangeCommand::class.java)
 
     override fun run() {
-        val hostArg = host
+        val host = hostOpt
+            ?: hostArg
             ?: System.getenv("FREE_RANGE_HOST")
             ?: run {
-                System.err.println("Error: host argument is required.")
-                System.err.println("Usage: free-range <host> [options]")
+                System.err.println("Error: host is required.")
+                System.err.println("Usage: free-range <host> [options]  or  free-range -H <host> [options]")
                 System.err.println("Run 'free-range --help' for usage information.")
                 exitProcess(1)
             }
 
-        // Resolve full configuration
         val config = try {
             AppConfig.resolve(
-                host = hostArg,
+                host = host,
                 cliUsername = username,
                 cliPassword = password,
                 cliPort = null,
@@ -81,7 +84,6 @@ class FreeRangeCommand : Runnable {
             exitProcess(1)
         }
 
-        // Enable debug logging if requested
         if (config.debug) {
             Configurator.setLevel("net.ukrhub.noc.freerange", Level.DEBUG)
             logger.debug("Debug mode enabled")
@@ -148,7 +150,7 @@ class FreeRangeCommand : Runnable {
                 logger.debug("Processing all {} interfaces: {}", ifaces.size, ifaces)
                 ifaces
             }
-            null -> listOf(null)   // all combined, no filter
+            null -> listOf(null)
             else -> listOf(config.interfaceName)
         }
 

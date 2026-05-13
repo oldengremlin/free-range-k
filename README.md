@@ -26,19 +26,22 @@ Kotlin-порт оригінального [free-range](https://github.com/olden
 
 ## Збірка
 
-Потрібно: Java 21+, Gradle 8+ (або використовуй wrapper `./gradlew`).
+Потрібно: Java 21+ (перевірено на 21 та 24), Gradle 8+.
 
 ```bash
 git clone https://github.com/oldengremlin/free-range-k.git
 cd free-range-k
 
-# Збірка + тести
+# Збірка + тести (wrapper вже є в репо — не запускай gradle wrapper!)
 ./gradlew build
 
 # Fat JAR (все в одному файлі)
 ./gradlew shadowJar
 # → build/libs/free-range-1.0.0.jar
 ```
+
+> **Увага:** не запускай `gradle wrapper` вручну — він перезапише `gradle-wrapper.properties`
+> версією твого локального Gradle, що може зламати збірку. Wrapper вже налаштований у репо.
 
 ## Запуск
 
@@ -53,14 +56,15 @@ java -jar build/libs/free-range-1.0.0.jar router.example.com -u admin -p secret
 ## Опції
 
 ```
-Використання: free-range <host> [options]
+Використання: free-range [<host>] [options]
 
 Параметри:
-  <host>                        Hostname або IP-адреса роутера
+  [<host>]                      Hostname або IP-адреса роутера (positional або -H)
 
 Опції:
   -h, --help                    Показати довідку
   -V, --version                 Показати версію
+  -H, --host HOST               Hostname або IP-адреса роутера (альтернатива positional)
   -u, --username USERNAME       Ім'я користувача для NETCONF/SSH
   -p, --password PASSWORD       Пароль для NETCONF/SSH
   -n, --no-color                Вимкнути кольоровий вивід
@@ -71,13 +75,20 @@ java -jar build/libs/free-range-1.0.0.jar router.example.com -u admin -p secret
   -c, --config CONFIG_FILE      Шлях до YAML-конфігурації
 ```
 
+Host вказується будь-яким із трьох способів (пріоритет: `-H` = positional > `FREE_RANGE_HOST`):
+```bash
+free-range router.example.com            # positional
+free-range -H router.example.com         # опція (зручно для Docker/env-only запуску)
+FREE_RANGE_HOST=router.example.com ...   # змінна оточення
+```
+
 ## Змінні оточення
 
 Всі CLI-опції мають відповідні змінні оточення (зручно для Docker):
 
 | Змінна | CLI-аналог | Дефолт |
 |--------|------------|--------|
-| `FREE_RANGE_HOST` | `<host>` | — |
+| `FREE_RANGE_HOST` | `<host>` або `-H` | — |
 | `FREE_RANGE_USERNAME` або `WHOAMI` | `-u` | — |
 | `FREE_RANGE_PASSWORD` або `WHATISMYPASSWD` | `-p` | — |
 | `FREE_RANGE_PORT` | — | `22` |
