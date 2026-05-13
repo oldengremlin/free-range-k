@@ -14,6 +14,7 @@ repositories {
 
 dependencies {
     implementation("com.jcraft:jsch:0.1.55")
+    implementation("com.microsoft.sqlserver:mssql-jdbc:12.8.1.jre11")
     implementation("info.picocli:picocli:4.7.6")
     implementation("org.yaml:snakeyaml:2.3")
     implementation("org.apache.logging.log4j:log4j-api:2.24.3")
