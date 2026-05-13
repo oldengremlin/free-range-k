@@ -206,30 +206,40 @@ class NetconfClient(
 
             val ifaceRangeList = mutableListOf<IntRange>()
 
+            // command_ranges: interface/auto-configure/vlan-ranges/dynamic-profile/ranges/<name>
+            // The range text (e.g. "3200-4000") lives in the <name> child of each <ranges> element,
+            // which itself is nested under auto-configure (NOT under unit/dynamic-profile).
+            val autoConfigNodes = iface.getElementsByTagName("auto-configure")
+            for (j in 0 until autoConfigNodes.length) {
+                val ac = autoConfigNodes.item(j) as? Element ?: continue
+                val rangesNodes = ac.getElementsByTagName("ranges")
+                for (k in 0 until rangesNodes.length) {
+                    val rangesElem = rangesNodes.item(k) as? Element ?: continue
+                    val nameText = rangesElem.getElementsByTagName("name").item(0)?.textContent?.trim()
+                    if (!nameText.isNullOrEmpty()) {
+                        parseVlanRange(nameText)?.let { ifaceRangeList.add(it) }
+                    }
+                }
+            }
+
+            // command_demux + command_another: iterate units
             val units = iface.getElementsByTagName("unit")
             for (j in 0 until units.length) {
                 val unit = units.item(j) as? Element ?: continue
                 val unitNum = unit.getElementsByTagName("name").item(0)?.textContent?.trim()?.toIntOrNull()
+                    ?: continue
+                if (unitNum <= 0) continue
 
-                // command_ranges: dynamic-profile > ranges
-                val dpElements = unit.getElementsByTagName("dynamic-profile")
-                for (k in 0 until dpElements.length) {
-                    val dp = dpElements.item(k) as? Element ?: continue
-                    extractDynamicProfileRanges(dp, ifaceRangeList)
+                // command_demux: units with unnumbered-address (any depth)
+                if (unit.getElementsByTagName("unnumbered-address").length > 0) {
+                    demuxMap.getOrPut(ifaceName) { mutableListOf() }.add(unitNum)
                 }
 
-                if (unitNum != null && unitNum > 0) {
-                    // command_demux: units with unnumbered-address
-                    if (unit.getElementsByTagName("unnumbered-address").length > 0) {
-                        demuxMap.getOrPut(ifaceName) { mutableListOf() }.add(unitNum)
-                    }
-
-                    // command_another: units with explicit vlan-id
-                    val vlanIdElem = unit.getElementsByTagName("vlan-id").item(0)
-                    val vlanId = vlanIdElem?.textContent?.trim()?.toIntOrNull()
-                    if (vlanId != null && vlanId > 0) {
-                        anotherMap.getOrPut(ifaceName) { mutableListOf() }.add(vlanId)
-                    }
+                // command_another: units with explicit vlan-id (direct child of unit)
+                val vlanIdElem = unit.getElementsByTagName("vlan-id").item(0)
+                val vlanId = vlanIdElem?.textContent?.trim()?.toIntOrNull()
+                if (vlanId != null && vlanId > 0) {
+                    anotherMap.getOrPut(ifaceName) { mutableListOf() }.add(vlanId)
                 }
             }
 
@@ -243,40 +253,6 @@ class NetconfClient(
         logger.debug("Total range entries: {}", rangesMap.values.sumOf { it.size })
 
         return InterfaceVlanData(rangesMap, demuxMap, anotherMap, interfacesWithRanges)
-    }
-
-    /**
-     * Extracts VLAN ranges from a <dynamic-profile> element.
-     *
-     * Junos CLI: "dynamic-profile <name> ranges START END"
-     * In XML this becomes a <ranges> child of <dynamic-profile>.
-     * The range may be encoded as:
-     *   - structured:  <ranges><low>1527</low><high>1702</high></ranges>
-     *   - text hyphen: <ranges>1527-1702</ranges>
-     *   - text space:  <ranges>1527 1702</ranges>
-     *   - single:      <ranges>239</ranges>
-     */
-    private fun extractDynamicProfileRanges(dp: Element, result: MutableList<IntRange>) {
-        val rangesNodes = dp.getElementsByTagName("ranges")
-        for (i in 0 until rangesNodes.length) {
-            val elem = rangesNodes.item(i) as? Element ?: continue
-
-            // Structured: <low>/<high> children
-            val lowText = elem.getElementsByTagName("low").item(0)?.textContent?.trim()
-            val highText = elem.getElementsByTagName("high").item(0)?.textContent?.trim()
-            if (lowText != null && highText != null) {
-                val start = lowText.toIntOrNull()
-                val end = highText.toIntOrNull()
-                if (start != null && end != null && start <= end) {
-                    result.add(start..end)
-                    continue
-                }
-            }
-
-            // Text: "1527-1702" or "1527 1702" or "239"
-            val text = elem.textContent?.trim() ?: continue
-            parseVlanRange(text)?.let { result.add(it) }
-        }
     }
 
     private fun parseVlanRange(text: String): IntRange? {
