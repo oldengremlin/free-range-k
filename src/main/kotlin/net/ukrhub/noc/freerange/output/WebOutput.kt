@@ -21,7 +21,12 @@ object WebOutput {
         println("Web index saved: ${file.absolutePath}")
     }
 
-    private fun buildHtml(routers: List<RouterResult>): String = buildString {
+    private fun buildHtml(routers: List<RouterResult>): String {
+        val ts = System.currentTimeMillis()
+        return buildHtml(routers, ts)
+    }
+
+    private fun buildHtml(routers: List<RouterResult>, ts: Long): String = buildString {
         appendLine(
             """<!DOCTYPE html>
 <html lang="en">
@@ -71,13 +76,13 @@ ${CSS.trimIndent()}
 
             // Overall panel
             appendLine("<div class=\"panel active\">")
-            appendLine("<object type=\"image/svg+xml\" data=\"${escapeHtml(r.overallImage)}\" style=\"max-width:100%;display:block\"></object>")
+            appendLine("<object type=\"image/svg+xml\" data=\"${escapeHtml(r.overallImage)}?t=$ts\" style=\"max-width:100%;display:block\"></object>")
             appendLine("</div>")
 
             // Per-interface panels
             for (iface in r.interfaces) {
                 appendLine("<div class=\"panel\">")
-                appendLine("<object type=\"image/svg+xml\" data=\"${escapeHtml(iface.imageFile)}\" style=\"max-width:100%;display:block\"></object>")
+                appendLine("<object type=\"image/svg+xml\" data=\"${escapeHtml(iface.imageFile)}?t=$ts\" style=\"max-width:100%;display:block\"></object>")
                 appendLine("</div>")
             }
 
