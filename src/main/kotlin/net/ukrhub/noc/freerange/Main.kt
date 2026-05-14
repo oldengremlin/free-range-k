@@ -1,6 +1,5 @@
 package net.ukrhub.noc.freerange
 
-import net.ukrhub.noc.freerange.Log
 import net.ukrhub.noc.freerange.netconf.NetconfClient
 import net.ukrhub.noc.freerange.output.PngOutput
 import net.ukrhub.noc.freerange.output.SvgOutput
@@ -67,7 +66,7 @@ class FreeRangeCommand : Runnable {
 
     override fun run() {
         if (web && tablePng == null) {
-            Log.error("Error: --web requires -g/--table-png to specify output directory.")
+            logger.error("Error: --web requires -g/--table-png to specify output directory.")
             exitProcess(1)
         }
 
@@ -76,7 +75,7 @@ class FreeRangeCommand : Runnable {
         val effectivePng = tablePng ?: System.getenv("FREE_RANGE_TABLE_PNG")
 
         if (effectiveWeb && effectivePng == null) {
-            Log.error("Error: FREE_RANGE_WEB requires FREE_RANGE_TABLE_PNG to be set.")
+            logger.error("Error: FREE_RANGE_WEB requires FREE_RANGE_TABLE_PNG to be set.")
             exitProcess(1)
         }
 
@@ -107,8 +106,8 @@ class FreeRangeCommand : Runnable {
             ?: hostArg?.let { listOf(it) }
             ?: System.getenv("FREE_RANGE_HOST")?.split(',')?.map { it.trim() }
             ?: run {
-                Log.error("Error: host is required.")
-                Log.error("Usage: free-range <host> [options]  or  free-range -H <host>[,<host>...] [options]")
+                logger.error("Error: host is required.")
+                logger.error("Usage: free-range <host> [options]  or  free-range -H <host>[,<host>...] [options]")
                 exitProcess(1)
             }
         val effectiveSuffix = suffix ?: System.getenv("FREE_RANGE_SUFFIX")
@@ -130,13 +129,13 @@ class FreeRangeCommand : Runnable {
             cliSuffix = suffix
         )
     } catch (e: IllegalStateException) {
-        Log.error("Error: ${e.message}")
+        logger.error("Error: ${e.message}")
         exitProcess(1)
     }
 
     private fun fetchSubscribers(config: AppConfig): String {
         val source = if (config.accServer != null && config.accUser != null && config.accPassword != null) {
-            Log.info("Fetching subscribers from MSSQL (${config.accServer})...")
+            logger.info("Fetching subscribers from MSSQL (${config.accServer})...")
             MssqlSubscriberSource(
                 server = config.accServer,
                 database = config.accDatabase,
@@ -145,18 +144,18 @@ class FreeRangeCommand : Runnable {
                 port = config.accPort,
             )
         } else {
-            Log.info("Fetching subscribers via command...")
+            logger.info("Fetching subscribers via command...")
             LocalCommandSubscriberSource(config.subscribersCommand)
         }
         val raw = try {
             source.getSubscribers()
         } catch (e: Exception) {
-            Log.error("Error fetching subscribers: ${e.message}")
+            logger.error("Error fetching subscribers: ${e.message}")
             logger.debug("Subscriber fetch exception", e)
             exitProcess(1)
         }
         if (raw.isBlank()) {
-            Log.error("Error: subscriber source returned empty output.")
+            logger.error("Error: subscriber source returned empty output.")
             exitProcess(1)
         }
         logger.debug("Received {} lines of subscriber data", raw.lines().size)
@@ -164,7 +163,7 @@ class FreeRangeCommand : Runnable {
     }
 
     private fun fetchVlanData(config: AppConfig): NetconfClient.InterfaceVlanData {
-        Log.info("Connecting to ${config.host}...")
+        logger.info("Connecting to ${config.host}...")
         return try {
             NetconfClient(
                 host = config.host,
@@ -175,12 +174,12 @@ class FreeRangeCommand : Runnable {
                 debug = config.debug
             ).use { client ->
                 client.connect()
-                Log.info("Connected. Fetching interface configuration...")
+                logger.info("Connected. Fetching interface configuration...")
                 val doc = client.fetchInterfacesConfig()
                 client.parseInterfaceVlanData(doc)
             }
         } catch (e: Exception) {
-            Log.error("Error communicating with ${config.host}: ${e.message}")
+            logger.error("Error communicating with ${config.host}: ${e.message}")
             logger.debug("NETCONF exception", e)
             exitProcess(1)
         }
@@ -193,7 +192,7 @@ class FreeRangeCommand : Runnable {
             "all" -> {
                 val ifaces = vlanData.interfacesWithRanges
                 if (ifaces.isEmpty()) {
-                    Log.error("No interfaces with configured ranges found on ${config.host}.")
+                    logger.error("No interfaces with configured ranges found on ${config.host}.")
                     exitProcess(1)
                 }
                 ifaces

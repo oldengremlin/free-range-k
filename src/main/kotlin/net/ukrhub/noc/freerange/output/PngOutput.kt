@@ -1,7 +1,7 @@
 package net.ukrhub.noc.freerange.output
 
-import net.ukrhub.noc.freerange.Log
 import net.ukrhub.noc.freerange.vlan.VlanStatus
+import org.apache.logging.log4j.LogManager
 import java.awt.Color
 import java.awt.Font
 import java.awt.RenderingHints
@@ -27,6 +27,8 @@ import javax.imageio.ImageIO
  *  - UNUSED     → #555555 (dark grey)
  */
 object PngOutput {
+
+    private val logger = LogManager.getLogger(PngOutput::class.java)
 
     private val STATUS_COLORS = mapOf(
         VlanStatus.FREE       to Color(0x00, 0xFF, 0x00),
@@ -122,7 +124,7 @@ object PngOutput {
         val filename = "free-range-$target${if (safeName != null) "-$safeName" else ""}.png"
         val file = File(dir, filename)
         ImageIO.write(image, "PNG", file)
-        Log.info("Image saved: ${file.absolutePath}")
+        logger.info("Image saved: ${file.absolutePath}")
         return filename
     }
 
