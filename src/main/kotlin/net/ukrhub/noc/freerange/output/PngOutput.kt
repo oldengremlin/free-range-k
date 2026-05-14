@@ -1,5 +1,6 @@
 package net.ukrhub.noc.freerange.output
 
+import net.ukrhub.noc.freerange.Log
 import net.ukrhub.noc.freerange.vlan.VlanStatus
 import java.awt.Color
 import java.awt.Font
@@ -121,7 +122,7 @@ object PngOutput {
         val filename = "free-range-$target${if (safeName != null) "-$safeName" else ""}.png"
         val file = File(dir, filename)
         ImageIO.write(image, "PNG", file)
-        println("Image saved: ${file.absolutePath}")
+        Log.info("Image saved: ${file.absolutePath}")
         return filename
     }
 

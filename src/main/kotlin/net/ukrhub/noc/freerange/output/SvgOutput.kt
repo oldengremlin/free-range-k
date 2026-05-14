@@ -1,5 +1,6 @@
 package net.ukrhub.noc.freerange.output
 
+import net.ukrhub.noc.freerange.Log
 import net.ukrhub.noc.freerange.vlan.VlanStatus
 import java.io.File
 
@@ -45,7 +46,7 @@ object SvgOutput {
         val safeName = interfaceName?.replace('/', '-')
         val filename = "free-range-$target${if (safeName != null) "-$safeName" else ""}.svg"
         File(dir, filename).writeText(buildSvg(statuses, counts, target, interfaceName))
-        println("SVG saved: ${File(dir, filename).absolutePath}")
+        Log.info("SVG saved: ${File(dir, filename).absolutePath}")
         return filename
     }
 

@@ -1,5 +1,6 @@
 package net.ukrhub.noc.freerange.output
 
+import net.ukrhub.noc.freerange.Log
 import net.ukrhub.noc.freerange.vlan.VlanProcessor
 import net.ukrhub.noc.freerange.vlan.VlanStatus
 import java.io.File
@@ -18,7 +19,7 @@ object WebOutput {
     fun generate(routers: List<RouterResult>, outputDir: String) {
         val file = File(outputDir, "index.html")
         file.writeText(buildHtml(routers))
-        println("Web index saved: ${file.absolutePath}")
+        Log.info("Web index saved: ${file.absolutePath}")
     }
 
     private fun buildHtml(routers: List<RouterResult>): String {
