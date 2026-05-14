@@ -2,9 +2,12 @@ package net.ukrhub.noc.freerange.output
 
 import net.ukrhub.noc.freerange.vlan.VlanProcessor
 import net.ukrhub.noc.freerange.vlan.VlanStatus
+import org.apache.logging.log4j.LogManager
 import java.io.File
 
 object WebOutput {
+
+    private val logger = LogManager.getLogger(WebOutput::class.java)
 
     data class IfaceResult(val name: String, val imageFile: String)
 
@@ -18,7 +21,7 @@ object WebOutput {
     fun generate(routers: List<RouterResult>, outputDir: String) {
         val file = File(outputDir, "index.html")
         file.writeText(buildHtml(routers))
-        println("Web index saved: ${file.absolutePath}")
+        logger.info("Web index saved: ${file.absolutePath}")
     }
 
     private fun buildHtml(routers: List<RouterResult>): String {

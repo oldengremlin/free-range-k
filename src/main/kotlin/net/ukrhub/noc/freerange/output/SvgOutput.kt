@@ -1,9 +1,12 @@
 package net.ukrhub.noc.freerange.output
 
 import net.ukrhub.noc.freerange.vlan.VlanStatus
+import org.apache.logging.log4j.LogManager
 import java.io.File
 
 object SvgOutput {
+
+    private val logger = LogManager.getLogger(SvgOutput::class.java)
 
     private val STATUS_COLORS = mapOf(
         VlanStatus.FREE       to "#00ff00",
@@ -45,7 +48,7 @@ object SvgOutput {
         val safeName = interfaceName?.replace('/', '-')
         val filename = "free-range-$target${if (safeName != null) "-$safeName" else ""}.svg"
         File(dir, filename).writeText(buildSvg(statuses, counts, target, interfaceName))
-        println("SVG saved: ${File(dir, filename).absolutePath}")
+        logger.info("SVG saved: ${File(dir, filename).absolutePath}")
         return filename
     }
 
