@@ -3,6 +3,8 @@ package net.ukrhub.noc.freerange.output
 import net.ukrhub.noc.freerange.vlan.VlanStatus
 import org.apache.logging.log4j.LogManager
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 object SvgOutput {
 
@@ -47,8 +49,16 @@ object SvgOutput {
         if (!dir.exists()) dir.mkdirs()
         val safeName = interfaceName?.replace('/', '-')
         val filename = "free-range-$target${if (safeName != null) "-$safeName" else ""}.svg"
-        File(dir, filename).writeText(buildSvg(statuses, counts, target, interfaceName))
-        logger.info("SVG saved: ${File(dir, filename).absolutePath}")
+        val targetFile = File(dir, filename)
+        val tmp = File.createTempFile("free-range-", ".svg.tmp", dir)
+        try {
+            tmp.writeText(buildSvg(statuses, counts, target, interfaceName))
+            Files.move(tmp.toPath(), targetFile.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        } catch (e: Exception) {
+            tmp.delete()
+            throw e
+        }
+        logger.info("SVG saved: ${targetFile.absolutePath}")
         return filename
     }
 

@@ -3,6 +3,8 @@ package net.ukrhub.noc.freerange.output
 import net.ukrhub.noc.freerange.vlan.VlanStatus
 import org.apache.logging.log4j.LogManager
 import java.awt.Color
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.awt.Font
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
@@ -122,9 +124,16 @@ object PngOutput {
         if (!dir.exists()) dir.mkdirs()
         val safeName = interfaceName?.replace('/', '-')
         val filename = "free-range-$target${if (safeName != null) "-$safeName" else ""}.png"
-        val file = File(dir, filename)
-        ImageIO.write(image, "PNG", file)
-        logger.info("Image saved: ${file.absolutePath}")
+        val targetFile = File(dir, filename)
+        val tmp = File.createTempFile("free-range-", ".png.tmp", dir)
+        try {
+            ImageIO.write(image, "PNG", tmp)
+            Files.move(tmp.toPath(), targetFile.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        } catch (e: Exception) {
+            tmp.delete()
+            throw e
+        }
+        logger.info("Image saved: ${targetFile.absolutePath}")
         return filename
     }
 
