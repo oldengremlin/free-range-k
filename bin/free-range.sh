@@ -12,6 +12,6 @@
 #   OPENCHANNEL              — netconf channel mode (subsystem-netconf or exec)
 
 while true; do
-    "$JAVA_HOME/bin/java" -jar /usr/local/bin/free-range.jar
+    "$JAVA_HOME/bin/java" -Duser.language=en -Duser.country=US -jar /usr/local/bin/free-range.jar
     sleep 3600
 done
