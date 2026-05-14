@@ -65,7 +65,7 @@ free-range-k/
         │       ├── TextOutput.kt      combined ranges + ANSI
         │       ├── TableOutput.kt     ASCII 41×100 таблиця
         │       ├── PngOutput.kt       Java AWT PNG (для -g без --web)
-        │       ├── SvgOutput.kt       SVG із tooltip на кожній клітинці (для --web)
+        │       ├── SvgOutput.kt       SVG із tooltip на кожній клітинці — буква+фон (для --web)
         │       └── WebOutput.kt       HTML-дашборд із табами
         └── resources/
             └── log4j2.xml        конфігурація логування
