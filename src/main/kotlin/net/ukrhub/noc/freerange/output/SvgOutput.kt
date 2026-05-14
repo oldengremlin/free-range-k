@@ -23,14 +23,15 @@ object SvgOutput {
         VlanStatus.UNUSED     to "unused"
     )
 
-    private const val CELL_W = 12
-    private const val CELL_H = 20
-    private const val ROWS = 41
-    private const val COLS = 100
+    private const val CELL_W  = 13
+    private const val CELL_H  = 22
+    private const val ROWS    = 41
+    private const val COLS    = 100
     private const val HEADER_H = 60
-    private const val LABEL_W = 50
-    private const val FONT = 14
-    private const val CHAR_W = 8  // monospace character width approximation
+    private const val LABEL_W  = 50
+    private const val FONT     = 14  // for titles, labels, legend
+    private const val CELL_FONT = 7  // small letter inside each cell
+    private const val CHAR_W   = 8
 
     fun save(
         statuses: Map<Int, VlanStatus>,
@@ -67,27 +68,32 @@ object SvgOutput {
 
             // Column group headers (0..9)
             for (i in 0..9) {
-                val x = LABEL_W + i * 10 * CELL_W + 5
-                appendLine("""<text x="$x" y="${HEADER_H - 5}" font-family="monospace" font-size="$FONT">${i}</text>""")
+                val x = LABEL_W + i * 10 * CELL_W + 4
+                appendLine("""<text x="$x" y="${HEADER_H - 5}" font-family="monospace" font-size="$FONT">$i</text>""")
             }
 
-            // Grid
+            // Grid: each cell = <g><title>…</title><rect/><text/></g>
+            // so the tooltip fires whether the cursor is on the letter or the background
             for (row in 0..40) {
                 val startVlan = row * 100
-                val endVlan = minOf(startVlan + 99, 4094)
-                val y = HEADER_H + row * CELL_H
+                val endVlan   = minOf(startVlan + 99, 4094)
+                val y         = HEADER_H + row * CELL_H
 
                 appendLine("""<text x="5" y="${y + FONT}" font-family="monospace" font-size="$FONT">${"%4d".format(startVlan)}</text>""")
 
                 for ((col, vlan) in (startVlan..endVlan).withIndex()) {
                     val status = statuses[vlan] ?: continue
-                    val x = LABEL_W + col * CELL_W
-                    val fill = STATUS_COLORS[status]!!
-                    val name = STATUS_NAMES[status]!!
-                    append("""<rect x="$x" y="$y" width="$CELL_W" height="$CELL_H" fill="$fill">""")
-                    append("""<title>VLAN $vlan, $name</title>""")
-                    appendLine("</rect>")
-                    appendLine("""<text x="${x + 2}" y="${y + FONT}" font-family="monospace" font-size="$FONT">${status.code}</text>""")
+                    val x      = LABEL_W + col * CELL_W
+                    val fill   = STATUS_COLORS[status]!!
+                    val stroke = darken(fill)
+                    val name   = STATUS_NAMES[status]!!
+
+                    appendLine("<g>")
+                    appendLine("""  <title>VLAN $vlan, $name</title>""")
+                    appendLine("""  <rect x="$x" y="$y" width="$CELL_W" height="$CELL_H" fill="$fill" stroke="$stroke" stroke-width="1"/>""")
+                    // small letter in top-left corner of the cell
+                    appendLine("""  <text x="${x + 2}" y="${y + CELL_FONT + 1}" font-family="monospace" font-size="$CELL_FONT">${status.code}</text>""")
+                    appendLine("</g>")
                 }
             }
 
@@ -100,7 +106,7 @@ object SvgOutput {
             for ((idx, entry) in legendEntries.withIndex()) {
                 val (status, label) = entry
                 val fill = STATUS_COLORS[status]!!
-                appendLine("""<rect x="$x" y="${legendY - FONT + 2}" width="10" height="12" fill="$fill"/>""")
+                appendLine("""<rect x="$x" y="${legendY - FONT + 2}" width="10" height="12" fill="$fill" stroke="${darken(fill)}" stroke-width="1"/>""")
                 appendLine("""<text x="${x + 2}" y="$legendY" font-family="monospace" font-size="$FONT">${status.code}</text>""")
                 x += 12
                 val sep = if (idx < legendEntries.size - 1) ", " else ""
@@ -114,12 +120,12 @@ object SvgOutput {
             appendLine("""<text x="$x" y="$summaryY" font-family="monospace" font-size="$FONT">Total: </text>""")
             x += "Total: ".length * CHAR_W
             for ((idx, status) in VlanStatus.entries.withIndex()) {
-                val fill = STATUS_COLORS[status]!!
+                val fill  = STATUS_COLORS[status]!!
                 val count = counts[status] ?: 0
-                appendLine("""<rect x="$x" y="${summaryY - FONT + 2}" width="10" height="12" fill="$fill"/>""")
+                appendLine("""<rect x="$x" y="${summaryY - FONT + 2}" width="10" height="12" fill="$fill" stroke="${darken(fill)}" stroke-width="1"/>""")
                 appendLine("""<text x="${x + 2}" y="$summaryY" font-family="monospace" font-size="$FONT">${status.code}</text>""")
                 x += 12
-                val sep = if (idx < VlanStatus.entries.size - 1) ", " else ""
+                val sep      = if (idx < VlanStatus.entries.size - 1) ", " else ""
                 val countStr = "=$count$sep"
                 appendLine("""<text x="$x" y="$summaryY" font-family="monospace" font-size="$FONT">$countStr</text>""")
                 x += countStr.length * CHAR_W
@@ -127,6 +133,15 @@ object SvgOutput {
 
             append("</svg>")
         }
+    }
+
+    /** Returns a darkened version of a #rrggbb color (factor < 1.0 = darker). */
+    private fun darken(hex: String, factor: Double = 0.6): String {
+        val v = hex.trimStart('#').toLong(16)
+        val r = ((v shr 16 and 0xFF) * factor).toInt().coerceIn(0, 255)
+        val g = ((v shr 8  and 0xFF) * factor).toInt().coerceIn(0, 255)
+        val b = ((v         and 0xFF) * factor).toInt().coerceIn(0, 255)
+        return "#%02x%02x%02x".format(r, g, b)
     }
 
     private fun xml(s: String) = s
