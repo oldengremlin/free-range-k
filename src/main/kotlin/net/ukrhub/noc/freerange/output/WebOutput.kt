@@ -4,6 +4,8 @@ import net.ukrhub.noc.freerange.vlan.VlanProcessor
 import net.ukrhub.noc.freerange.vlan.VlanStatus
 import org.apache.logging.log4j.LogManager
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 object WebOutput {
 
@@ -20,7 +22,14 @@ object WebOutput {
 
     fun generate(routers: List<RouterResult>, outputDir: String) {
         val file = File(outputDir, "index.html")
-        file.writeText(buildHtml(routers))
+        val tmp = File.createTempFile("free-range-", ".html.tmp", file.parentFile)
+        try {
+            tmp.writeText(buildHtml(routers))
+            Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        } catch (e: Exception) {
+            tmp.delete()
+            throw e
+        }
         logger.info("Web index saved: ${file.absolutePath}")
     }
 
