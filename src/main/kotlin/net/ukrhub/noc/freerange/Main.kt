@@ -16,6 +16,9 @@ import picocli.CommandLine
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
 import picocli.CommandLine.Parameters
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
+import java.util.concurrent.Semaphore
 import kotlin.system.exitProcess
 
 @Command(
@@ -63,6 +66,8 @@ class FreeRangeCommand : Runnable {
     var web: Boolean = false
 
     private val logger = LogManager.getLogger(FreeRangeCommand::class.java)
+    private val maxConcurrent = (System.getenv("FREE_RANGE_MAX_CONCURRENT") ?: "5").toInt()
+    private val semaphore = Semaphore(maxConcurrent)
 
     override fun run() {
         if (web && tablePng == null) {
@@ -87,19 +92,52 @@ class FreeRangeCommand : Runnable {
         val processor = VlanProcessor()
 
         if (effectiveWeb) {
-            val routerResults = hosts.map { host ->
-                processHostForWeb(host, rawSubscribers, processor, effectivePng!!)
+            logger.info("Processing {} host(s) in parallel (max {} concurrent)", hosts.size, maxConcurrent)
+            val results = ConcurrentHashMap<String, WebOutput.RouterResult>()
+            runParallel(hosts) { host ->
+                semaphore.acquireUninterruptibly()
+                try {
+                    results[host] = processHostForWeb(host, rawSubscribers, processor, effectivePng!!)
+                } finally {
+                    semaphore.release()
+                }
             }
+            val routerResults = hosts.mapNotNull { results[it] }
             WebOutput.generate(routerResults, effectivePng!!)
+        } else if (effectivePng != null) {
+            logger.info("Processing {} host(s) in parallel (max {} concurrent)", hosts.size, maxConcurrent)
+            runParallel(hosts) { host ->
+                semaphore.acquireUninterruptibly()
+                try {
+                    processHost(buildConfig(host), rawSubscribers, processor)
+                } finally {
+                    semaphore.release()
+                }
+            }
         } else {
             for (host in hosts) {
-                val config = buildConfig(host)
-                processHost(config, rawSubscribers, processor)
+                processHost(buildConfig(host), rawSubscribers, processor)
             }
         }
     }
 
     // ── helpers ────────────────────────────────────────────────────────────
+
+    private fun runParallel(hosts: List<String>, task: (String) -> Unit) {
+        if (hosts.isEmpty()) return
+        Executors.newVirtualThreadPerTaskExecutor().use { executor ->
+            for (host in hosts) {
+                executor.submit {
+                    try {
+                        task(host)
+                    } catch (ex: Exception) {
+                        logger.error("Task failed for {}: {}", host, ex.message)
+                        logger.debug("Task exception for {}", host, ex)
+                    }
+                }
+            }
+        }
+    }
 
     private fun resolveHosts(): List<String> {
         val raw = hostsOpt?.split(',')?.map { it.trim() }
@@ -181,7 +219,7 @@ class FreeRangeCommand : Runnable {
         } catch (e: Exception) {
             logger.error("Error communicating with ${config.host}: ${e.message}")
             logger.debug("NETCONF exception", e)
-            exitProcess(1)
+            throw RuntimeException("NETCONF failed for ${config.host}", e)
         }
     }
 
@@ -193,7 +231,7 @@ class FreeRangeCommand : Runnable {
                 val ifaces = vlanData.interfacesWithRanges
                 if (ifaces.isEmpty()) {
                     logger.error("No interfaces with configured ranges found on ${config.host}.")
-                    exitProcess(1)
+                    throw RuntimeException("No interfaces on ${config.host}")
                 }
                 ifaces
             }
