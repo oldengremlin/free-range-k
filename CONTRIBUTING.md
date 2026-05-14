@@ -169,6 +169,26 @@ class RestSubscriberSource(
 
 XML і PNG — стандартна Java (без зовнішніх залежностей).
 
+## Логування
+
+Весь вивід іде через **Log4j2** (`LogManager.getLogger(ClassName::class.java)`).
+Конфіг — `src/main/resources/log4j2.xml`, патерн сумісний із форматом nginx-логів.
+
+- Операційні повідомлення → `logger.info(...)`
+- Помилки → `logger.error(...)`
+- Діагностика → `logger.debug(...)` (видно лише з `-d`)
+
+Не використовуй `System.err.println` або `println` для операційного виводу.
+`NetconfClient` може виводити сирий XML у `System.err` лише у debug-режимі — це виняток.
+
+## Паралельна обробка
+
+`--web` і `-g` режими запускають `runParallel()` з `Executors.newVirtualThreadPerTaskExecutor()`.
+Семафор `Semaphore(FREE_RANGE_MAX_CONCURRENT)` обмежує кількість одночасних SSH-з'єднань.
+
+Файли записуються атомарно через `File.createTempFile()` + `Files.move(ATOMIC_MOVE, REPLACE_EXISTING)`.
+Тимчасовий файл створюється в тій самій директорії що й цільовий — це обов'язково для атомарного `rename()`.
+
 ## Гілки і коміти
 
 - Розробка ведеться у feature-гілках від `main`
