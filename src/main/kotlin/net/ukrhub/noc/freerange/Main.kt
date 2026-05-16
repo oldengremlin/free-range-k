@@ -124,7 +124,7 @@ class FreeRangeCommand : Runnable {
             val routerResults = hosts.mapNotNull { results[it] }
             val allResults = if (effectiveGlobal && routerResults.size > 1) {
                 val globalResult = processor.mergeGlobal(routerResults.map { it.overallVlanResult })
-                val globalSvg = SvgOutput.save(globalResult.statuses, globalResult.counts, effectivePng!!, "GLOBAL", null)
+                val globalSvg = SvgOutput.save(globalResult.statuses, globalResult.counts, effectivePng!!, "GLOBAL", null, isGlobal = true)
                 val globalEntry = WebOutput.RouterResult("Global", globalSvg, globalResult, emptyList())
                 listOf(globalEntry) + routerResults
             } else {

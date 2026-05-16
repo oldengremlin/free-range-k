@@ -60,7 +60,8 @@ object SvgOutput {
         counts: Map<VlanStatus, Int>,
         outputPath: String,
         target: String,
-        interfaceName: String?
+        interfaceName: String?,
+        isGlobal: Boolean = false
     ): String {
         val dir = File(outputPath)
         if (!dir.exists()) dir.mkdirs()
@@ -69,7 +70,7 @@ object SvgOutput {
         val targetFile = File(dir, filename)
         val tmp = File.createTempFile("free-range-", ".svg.tmp", dir)
         try {
-            tmp.writeText(buildSvg(statuses, counts, target, interfaceName))
+            tmp.writeText(buildSvg(statuses, counts, target, interfaceName, isGlobal))
             Files.move(tmp.toPath(), targetFile.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
         } catch (e: Exception) {
             tmp.delete()
@@ -83,7 +84,8 @@ object SvgOutput {
         statuses: Map<Int, VlanStatus>,
         counts: Map<VlanStatus, Int>,
         target: String,
-        interfaceName: String?
+        interfaceName: String?,
+        isGlobal: Boolean = false
     ): String {
         val w = LABEL_W + COLS * CELL_W + 10
         val h = HEADER_H + ROWS * CELL_H + 20 + 50
@@ -132,7 +134,7 @@ object SvgOutput {
             var x = 10
             appendLine("""<text x="$x" y="$legendY" font-family="monospace" font-size="$FONT">Legend: </text>""")
             x += "Legend: ".length * CHAR_W
-            val legendEntries = VlanStatus.entries.map { it to "=${STATUS_NAMES[it]}" }
+            val legendEntries = VlanStatus.entries.filter { isGlobal || it != VlanStatus.SHARED }.map { it to "=${STATUS_NAMES[it]}" }
             for ((idx, entry) in legendEntries.withIndex()) {
                 val (status, label) = entry
                 val fill = STATUS_COLORS[status]!!
@@ -149,13 +151,14 @@ object SvgOutput {
             x = 10
             appendLine("""<text x="$x" y="$summaryY" font-family="monospace" font-size="$FONT">Total: </text>""")
             x += "Total: ".length * CHAR_W
-            for ((idx, status) in VlanStatus.entries.withIndex()) {
+            val summaryEntries = VlanStatus.entries.filter { isGlobal || it != VlanStatus.SHARED }
+            for ((idx, status) in summaryEntries.withIndex()) {
                 val fill  = STATUS_COLORS[status]!!
                 val count = counts[status] ?: 0
                 appendLine("""<rect x="$x" y="${summaryY - FONT + 2}" width="10" height="12" fill="$fill" stroke="${darken(fill)}" stroke-width="1"/>""")
                 appendLine("""<text x="${x + 2}" y="$summaryY" font-family="monospace" font-size="$FONT">${status.code}</text>""")
                 x += 12
-                val sep      = if (idx < VlanStatus.entries.size - 1) ", " else ""
+                val sep      = if (idx < summaryEntries.size - 1) ", " else ""
                 val countStr = "=$count$sep"
                 appendLine("""<text x="$x" y="$summaryY" font-family="monospace" font-size="$FONT">$countStr</text>""")
                 x += countStr.length * CHAR_W
