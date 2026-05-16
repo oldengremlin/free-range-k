@@ -84,5 +84,6 @@ object TextOutput {
         VlanStatus.CONFIGURED -> "${ESC}[35m"   // magenta
         VlanStatus.ANOTHER    -> "${ESC}[34m"   // blue
         VlanStatus.UNUSED     -> "${ESC}[90m"   // dark grey
+        VlanStatus.SHARED     -> "${ESC}[38;5;208m" // orange
     }
 }
