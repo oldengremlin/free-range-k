@@ -8,7 +8,7 @@
 
 - Підключення до Junos через **NETCONF** (RFC 6241, framing 1.0) — без sshpass і shell-команд
 - XPath-парсинг XML-конфігурації інтерфейсів прямо з `<running>` конфігурації
-- Аналіз розподілу VLAN із шістьма статусами
+- Аналіз розподілу VLAN із шістьма статусами + сьомий (`shared`) у зведеній вкладці Global
 - Підтримка **кількох роутерів** одночасно (`-H r1,r2,r3 -s domain.net`)
 - Вивід: текстовий, кольорова ASCII-таблиця, PNG-зображення або **HTML-дашборд** з табами та інтерактивними SVG-графіками (tooltip на кожній клітинці)
 - Джерела абонентів: **прямий JDBC до MS SQL** (jTDS, TDS 8.0) або зовнішня команда
@@ -25,7 +25,7 @@
 | `c` | фіолетовий | **configured** — є `vlan-id` і він у діапазоні |
 | `a` | синій | **another** — є `vlan-id`, але поза діапазоном |
 | `u` | сірий | **unused** — поза всіма діапазонами, абонента немає |
-| `s` | помаранчевий | **shared** — VLAN ID активний одночасно на двох і більше роутерах (у вкладці Global дашборду) |
+| `s` | помаранчевий | **shared** — VLAN ID активний на двох і більше роутерах; відображається **тільки у вкладці Global** |
 
 ## Збірка
 
@@ -274,7 +274,7 @@ subscribers/
   MssqlSubscriberSource.kt  JDBC → MS SQL (jTDS, TDS 8.0)
   LocalCommandSubscriberSource.kt  shell-команда (fallback)
 vlan/
-  VlanStatus.kt          FREE / BUSY / ERROR / CONFIGURED / ANOTHER / UNUSED
+  VlanStatus.kt          FREE / BUSY / ERROR / CONFIGURED / ANOTHER / UNUSED / SHARED
   VlanProcessor.kt       логіка розподілу
 output/
   TextOutput.kt          combined ranges + ANSI
