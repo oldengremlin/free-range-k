@@ -86,7 +86,7 @@ ${CSS.trimIndent()}
             appendLine("<div class=\"panel$active\">")
 
             // Text summary above the tabs
-            appendLine("<pre>${buildSummaryHtml(r.overallVlanResult)}</pre>")
+            appendLine("<pre>${buildSummaryHtml(r.overallVlanResult, isGlobal = r.hostLabel == "Global")}</pre>")
 
             // Inner tab bar
             append("<div class=\"tab-bar inner\" id=\"r$ri-bar\">")
@@ -127,7 +127,7 @@ ${JS.trimIndent()}
         )
     }
 
-    private fun buildSummaryHtml(result: VlanProcessor.VlanResult): String = buildString {
+    private fun buildSummaryHtml(result: VlanProcessor.VlanResult, isGlobal: Boolean = false): String = buildString {
         val statuses = result.statuses
         val sorted = statuses.keys.sorted()
         if (sorted.isEmpty()) return ""
@@ -156,8 +156,8 @@ ${JS.trimIndent()}
 
         append(parts.joinToString(","))
         append("\nTotal: ")
-        append(VlanStatus.entries.filter { (result.counts[it] ?: 0) > 0 }.joinToString(", ") { s ->
-            "<span style=\"color:${colorForStatus(s)}\">${s.code}=${result.counts[s]}</span>"
+        append(VlanStatus.entries.filter { isGlobal || it != VlanStatus.SHARED }.joinToString(", ") { s ->
+            "<span style=\"color:${colorForStatus(s)}\">${s.code}=${result.counts[s] ?: 0}</span>"
         })
     }
 
