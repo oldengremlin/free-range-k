@@ -23,6 +23,7 @@ package net.ukrhub.noc.freerange.vlan
  * - CONFIGURED: has vlan-id and that vlan-id is within a range
  * - ANOTHER: has vlan-id but it's outside all ranges
  * - UNUSED: outside any range, no subscriber
+ * - SHARED: VLAN ID is active (non-UNUSED) on two or more routers simultaneously
  */
 enum class VlanStatus(val code: Char) {
     FREE('f'),
@@ -30,7 +31,8 @@ enum class VlanStatus(val code: Char) {
     ERROR('e'),
     CONFIGURED('c'),
     ANOTHER('a'),
-    UNUSED('u');
+    UNUSED('u'),
+    SHARED('s');
 
     companion object {
         fun fromCode(code: Char): VlanStatus? = entries.find { it.code == code }

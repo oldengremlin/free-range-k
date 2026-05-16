@@ -31,7 +31,8 @@ object SvgOutput {
         VlanStatus.ERROR      to "#ff0000",
         VlanStatus.CONFIGURED to "#ff00ff",
         VlanStatus.ANOTHER    to "#0000ff",
-        VlanStatus.UNUSED     to "#555555"
+        VlanStatus.UNUSED     to "#555555",
+        VlanStatus.SHARED     to "#ff8800"
     )
 
     private val STATUS_NAMES = mapOf(
@@ -40,7 +41,8 @@ object SvgOutput {
         VlanStatus.ERROR      to "error",
         VlanStatus.CONFIGURED to "configured",
         VlanStatus.ANOTHER    to "another",
-        VlanStatus.UNUSED     to "unused"
+        VlanStatus.UNUSED     to "unused",
+        VlanStatus.SHARED     to "shared"
     )
 
     private const val CELL_W  = 13

@@ -121,5 +121,6 @@ object TableOutput {
         VlanStatus.CONFIGURED -> "${ESC}[48;5;5m"   // magenta background
         VlanStatus.ANOTHER    -> "${ESC}[48;5;4m"   // blue background
         VlanStatus.UNUSED     -> "${ESC}[48;5;8m"   // dark grey background
+        VlanStatus.SHARED     -> "${ESC}[48;5;208m" // orange background
     }
 }

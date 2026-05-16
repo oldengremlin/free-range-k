@@ -120,6 +120,29 @@ class VlanProcessor {
     }
 
     /**
+     * Merges per-router VlanResults into a single global view.
+     *
+     * For each VLAN ID 1..4094:
+     *   - 2+ routers have it as non-UNUSED → SHARED
+     *   - exactly 1 router has it as non-UNUSED → use that status
+     *   - all routers have it as UNUSED (or absent) → UNUSED
+     */
+    fun mergeGlobal(results: List<VlanResult>): VlanResult {
+        val merged = mutableMapOf<Int, VlanStatus>()
+        for (vlan in 1..4094) {
+            val active = results.mapNotNull { it.statuses[vlan] }
+                .filter { it != VlanStatus.UNUSED && it != VlanStatus.SHARED }
+            merged[vlan] = when {
+                active.size >= 2 -> VlanStatus.SHARED
+                active.size == 1 -> active[0]
+                else             -> VlanStatus.UNUSED
+            }
+        }
+        val counts = VlanStatus.entries.associateWith { s -> merged.values.count { it == s } }
+        return VlanResult(merged, counts)
+    }
+
+    /**
      * Parses raw subscriber output and returns set of active VLAN IDs
      * for the given host target and optional interface filter.
      *

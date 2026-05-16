@@ -168,6 +168,7 @@ ${JS.trimIndent()}
         VlanStatus.CONFIGURED -> "#dd55ff"
         VlanStatus.ANOTHER    -> "#4499ff"
         VlanStatus.UNUSED     -> "#888888"
+        VlanStatus.SHARED     -> "#ff8800"
     }
 
     private fun escapeHtml(s: String) = s

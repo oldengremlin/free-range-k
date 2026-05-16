@@ -80,6 +80,9 @@ class FreeRangeCommand : Runnable {
     @Option(names = ["--web"], description = ["Generate index.html dashboard in -g directory (requires -g)"])
     var web: Boolean = false
 
+    @Option(names = ["-G", "--global"], description = ["Show global VLAN aggregation tab in --web dashboard (requires 2+ routers)"])
+    var global: Boolean = false
+
     private val logger = LogManager.getLogger(FreeRangeCommand::class.java)
     private val maxConcurrent = (System.getenv("FREE_RANGE_MAX_CONCURRENT") ?: "5").toInt()
     private val semaphore = Semaphore(maxConcurrent)
@@ -92,6 +95,7 @@ class FreeRangeCommand : Runnable {
 
         val hosts = resolveHosts()
         val effectiveWeb = web || System.getenv("FREE_RANGE_WEB")?.isNotEmpty() == true
+        val effectiveGlobal = global || System.getenv("FREE_RANGE_GLOBAL")?.isNotEmpty() == true
         val effectivePng = tablePng ?: System.getenv("FREE_RANGE_TABLE_PNG")
 
         if (effectiveWeb && effectivePng == null) {
@@ -118,7 +122,15 @@ class FreeRangeCommand : Runnable {
                 }
             }
             val routerResults = hosts.mapNotNull { results[it] }
-            WebOutput.generate(routerResults, effectivePng!!)
+            val allResults = if (effectiveGlobal && routerResults.size > 1) {
+                val globalResult = processor.mergeGlobal(routerResults.map { it.overallVlanResult })
+                val globalSvg = SvgOutput.save(globalResult.statuses, globalResult.counts, effectivePng!!, "GLOBAL", null)
+                val globalEntry = WebOutput.RouterResult("Global", globalSvg, globalResult, emptyList())
+                listOf(globalEntry) + routerResults
+            } else {
+                routerResults
+            }
+            WebOutput.generate(allResults, effectivePng!!)
         } else if (effectivePng != null) {
             logger.info("Processing {} host(s) in parallel (max {} concurrent)", hosts.size, maxConcurrent)
             runParallel(hosts) { host ->
