@@ -156,8 +156,8 @@ ${JS.trimIndent()}
 
         append(parts.joinToString(","))
         append("\nTotal: ")
-        append(VlanStatus.entries.joinToString(", ") { s ->
-            "<span style=\"color:${colorForStatus(s)}\">${s.code}=${result.counts[s] ?: 0}</span>"
+        append(VlanStatus.entries.filter { (result.counts[it] ?: 0) > 0 }.joinToString(", ") { s ->
+            "<span style=\"color:${colorForStatus(s)}\">${s.code}=${result.counts[s]}</span>"
         })
     }
 
