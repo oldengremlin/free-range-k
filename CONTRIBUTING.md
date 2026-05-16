@@ -104,7 +104,8 @@ docker run -d --name vlan \
   -e FREE_RANGE_USERNAME=admin \
   -e FREE_RANGE_PASSWORD=secret \
   -e FREE_RANGE_TABLE_PNG=/usr/share/nginx/html \
-  -e FREE_RANGE_WEB=1 \
+  -e FREE_RANGE_WEB=true \
+  -e FREE_RANGE_GLOBAL=true \
   -e FREE_RANGE_ACC_SERVER=10.100.1.59 \
   -e FREE_RANGE_ACC_USER=nocc \
   -e FREE_RANGE_ACC_PASSWORD=secret \
